@@ -1,0 +1,24 @@
+<CycloneDDS>
+  <Domain id="33">
+    <General>
+      <AllowMulticast>false</AllowMulticast>
+      <NetworkInterfaceAddress>auto</NetworkInterfaceAddress>
+
+    </General>
+
+    <Discovery>
+      <Peers>
+        <!-- ROS2 노드가 실행되는 장비만 등록 -->
+        <Peer address="192.168.10.20"/>  <!-- Mini PC -->
+        <!-- <Peer address="192.168.10.21"/> --> <!-- Desktop (GCS) -->
+        <Peer address="192.168.10.41"/>  <!-- Raspberry Pi (UAV) -->
+      </Peers>
+    </Discovery>
+
+    <!-- <Internal>
+      <Watermarks>
+        <WhcHigh>500kB</WhcHigh>
+      </Watermarks>
+    </Internal> -->
+  </Domain>
+</CycloneDDS>

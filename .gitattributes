@@ -1,0 +1,35 @@
+* text=auto eol=lf
+
+# Scripts & Config
+*.sh text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.xml text eol=lf
+*.launch.py text eol=lf
+Dockerfile text eol=lf
+.env text eol=lf
+
+# C++ (ROS2 노드)
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.h text eol=lf
+*.c text eol=lf
+CMakeLists.txt text eol=lf
+*.cmake text eol=lf
+package.xml text eol=lf
+
+# Web UI (폐쇄망 HTTPS)
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+
+# Binary
+*.png binary
+*.jpg binary
+*.bag binary
+*.deb binary
+*.so binary
+*.bin binary
