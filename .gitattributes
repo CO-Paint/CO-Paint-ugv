@@ -1,5 +1,6 @@
 * text=auto eol=lf
 
+
 # Scripts & Config
 *.sh text eol=lf
 *.py text eol=lf
@@ -10,6 +11,7 @@
 Dockerfile text eol=lf
 .env text eol=lf
 
+
 # C++ (ROS2 노드)
 *.cpp text eol=lf
 *.hpp text eol=lf
@@ -19,6 +21,7 @@ CMakeLists.txt text eol=lf
 *.cmake text eol=lf
 package.xml text eol=lf
 
+
 # Web UI (폐쇄망 HTTPS)
 *.html text eol=lf
 *.css text eol=lf
@@ -26,10 +29,17 @@ package.xml text eol=lf
 *.ts text eol=lf
 *.json text eol=lf
 
+# Docs
+*.md text eol=lf
+*.txt text eol=lf
+*.csv text eol=lf
+
 # Binary
 *.png binary
 *.jpg binary
 *.bag binary
+*.db3 binary
 *.deb binary
 *.so binary
 *.bin binary
+*.log binary
