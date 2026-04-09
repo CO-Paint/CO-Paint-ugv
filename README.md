@@ -11,3 +11,22 @@ git config --global core.autocrlf input
 ```
 
 > Windows는 Ubuntu와 달리 기본적으로 줄바꿈 문자를 CRLF로 변환하여 Docker 컨테이너나 Ubuntu에서 문제가 발생하는 것을 방지 함.
+
+## Control code 의존성
+### 1. MicroXrce-dds
+https://github.com/eProsima/Micro-XRCE-DDS
+
+### 2. PX4 autopilot
+https://github.com/PX4/PX4-Autopilot
+버전 1.16 필수
+서브모듈 모두 가져와야함
+
+### 3. px4_msgs
+```bash
+mkdir -p ~/px4_msgs_ws/src
+cd ~/px4_msgs_ws/src
+git clone -b release/1.16 https://github.com/PX4/px4_msgs.git
+cd ~/px4_msgs_ws
+colcon build
+source ~/px4_msgs_ws/install/setup.bash
+```
