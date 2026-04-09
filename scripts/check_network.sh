@@ -26,7 +26,7 @@ done
 
 echo "==============================="
 if [ $FAIL -eq 0 ]; then
-    echo "✅ All devices connected - Ready for demonstration"
+    echo "✅ All devices connected"
 else
     echo "⚠️  ${FAIL} device(s) failed - Please check connection"
 fi
