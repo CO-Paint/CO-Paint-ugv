@@ -1,6 +1,0 @@
-[console_scripts]
-auto_painter_node = px4_gui_ctrl.auto_painter:main
-drone_teleop_node = px4_gui_ctrl.drone_teleop:main
-gui_node = px4_gui_ctrl.gui_node:main
-manual_controller_node = px4_gui_ctrl.manual_controller:main
-
