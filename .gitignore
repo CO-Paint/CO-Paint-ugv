@@ -1,7 +1,7 @@
 # ROS2 빌드 결과물
-docker/co_paint/workspace/build/
-docker/co_paint/workspace/install/
-docker/co_paint/workspace/log/
+build/
+install/
+log/
 
 # DB 데이터
 docker/postgres/data/

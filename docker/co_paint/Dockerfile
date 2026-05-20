@@ -80,5 +80,10 @@ EXPOSE 9090
 
 CMD ["/bin/bash", "-c", \
     "source /opt/ros/humble/setup.bash && \
-     ros2 launch /launch/rosbridge.launch.py & \
-     bash"]
+     if [ -d /workspace/src ] && [ ! -f /workspace/install/setup.bash ]; then \
+       colcon build --symlink-install --base-paths /workspace/src; \
+     fi && \
+     if [ -f /workspace/install/setup.bash ]; then \
+       source /workspace/install/setup.bash; \
+     fi && \
+     exec ros2 launch /launch/rosbridge.launch.py"]

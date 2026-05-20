@@ -14,8 +14,8 @@ services:
       - CYCLONEDDS_URI=file:///cyclonedds.xml
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID}
     volumes:
-      # ROS2 workspace
-      - ./docker/co_paint/workspace:/workspace
+      # ROS2 workspace (control_code 기준)
+      - ./control_code:/workspace
 
       # DDS 설정
       - ./middleware/cyclonedds.xml:/cyclonedds.xml:ro
@@ -30,12 +30,7 @@ services:
       context: ./docker/web_ui
       dockerfile: Dockerfile
     env_file: .env
-    networks:
-      - app-network
-    ports:
-      - "${WEB_UI_PORT:-80}:80"                   # 외부 접근 포트
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    network_mode: host
     restart: unless-stopped
 
 
@@ -48,6 +43,8 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     network_mode: host
+    environment:
+      - PX4_LOCAL_POSITION_TOPIC=${PX4_LOCAL_POSITION_TOPIC:-/fmu/out/vehicle_local_position}
     volumes:
       - ./docker/server/src:/app/src
     depends_on:
@@ -65,7 +62,7 @@ services:
     networks:
       - app-network
     ports:  
-      - "5432:5432"
+      - "0.0.0.0:5432:5432"
     volumes:
       - ./docker/postgres/data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql

@@ -30,7 +30,7 @@ class PX4GuiControl(Node):
         # 현재 위치 및 방향 구독
         self.vehicle_local_position_sub = self.create_subscription(
             VehicleLocalPosition,
-            '/fmu/out/vehicle_local_position_v1',
+            '/fmu/out/vehicle_local_position',
             self.vehicle_local_position_callback,
             qos_profile
         )
