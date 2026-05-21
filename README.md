@@ -162,22 +162,21 @@ sudo ufw enable
 
 
 ### 4. DDS 통신 및 DB 저장 확인
-```bash
-# 토픽 테스트
-# 데스크톱 (수신)
+#### 토픽 테스트
+##### 데스크톱 (수신)
 ```bash
 docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; ros2 daemon stop; ros2 daemon start"
 
 docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; ros2 topic echo /copaint/net_test std_msgs/msg/String"
 ```
 
-# 라즈베리 파이
+##### 라즈베리 파이
 ```bash
 ros2 topic pub /copaint/net_test std_msgs/msg/String "{data: 'uav_edge_test_from_personal_minipc'}" -r 1
 ```
 
 
-# 데스크톱 (수신)
+##### 데스크톱 (수신)
 ```bash
 cd ~/dev/projects/CO_Paint/ugv_system
 
@@ -188,7 +187,7 @@ docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash
 docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /workspace/install/local_setup.bash; ros2 topic echo /copaint/px4_net_test px4_msgs/msg/VehicleStatus --qos-reliability best_effort"
 ```
 
-# 라즈베리 파이
+##### 라즈베리 파이
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/px4_msgs_ws/install/setup.bash  
@@ -200,7 +199,7 @@ ros2 topic pub -r 1 --qos-reliability best_effort \
 ```
 
 
-# 실패 시
+##### 실패 시
 ```bash
 WARNING: topic [/copaint/net_test] does not appear to be published yet
 Could not determine the type for the passed topic
@@ -380,7 +379,7 @@ ping -c 3 192.168.53.1
 
 #### 4-1. 고정 IP 변경 시 수정해야 하는 곳
 
-GCS IP를 예를 들어 `192.168.53.10`으로 바꾸는 경우 아래 파일을 모두 수정
+GCS IP를 예를 들어 `192.168.53.5`으로 바꾸는 경우 아래 파일을 모두 수정
 
 ```bash
 cd ~/dev/projects/CO_Paint/ugv_system
@@ -394,20 +393,20 @@ nano README.md
 `.env`:
 
 ```env
-GCS_IP=192.168.53.10
+GCS_IP=192.168.53.5
 ```
 
 `middleware/cyclonedds.xml`:
 
 ```xml
-<NetworkInterfaceAddress>192.168.53.10</NetworkInterfaceAddress>
+<NetworkInterfaceAddress>192.168.53.5</NetworkInterfaceAddress>
 <Peer address="192.168.53.10"/>  <!-- Desktop PC / GCS -->
 ```
 
 `docker/web_ui/nginx.conf`:
 
 ```nginx
-server_name 192.168.53.10 localhost _;
+server_name 192.168.53.5 localhost _;
 ```
 
 NetworkManager 고정 IP도 함께 변경
@@ -416,7 +415,7 @@ NetworkManager 고정 IP도 함께 변경
 cd ~
 nmcli connection show
 sudo nmcli connection modify "Wired connection 1" \
-  ipv4.addresses 192.168.53.10/24 \
+  ipv4.addresses 192.168.53.5/24 \
   ipv4.gateway 192.168.53.1 \
   ipv4.method manual
 sudo nmcli connection down "Wired connection 1"
