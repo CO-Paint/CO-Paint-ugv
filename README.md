@@ -3,7 +3,6 @@ ROS2-based UGV system for the CO-Paint project, including navigation, control, a
 
 ## 프로젝트 개요 (Project Overview)
 현재 UGV와 드론을 통신 및 연결하여 페인트를 뿌리는 프로젝트를 진행 중입니다.
-
 본 레포지토리는 UGV에 탑재되는 데스크톱용 레포지토리로, 프로젝트의 **메인 제어 서버**로 활용되며 동시에 **드론의 SLAM 처리**를 담당합니다.
 
 ### 시스템 구성 및 데이터 처리 체계
@@ -11,7 +10,6 @@ ROS2-based UGV system for the CO-Paint project, including navigation, control, a
 - **보조 미니 PC**: `192.168.53.6`, UGV SLAM 작업 담당
 - **드론 장착 라즈베리파이 (Raspberry Pi)**: `192.168.53.2`, 드론 내부 제어 통신
 - **라이다(LiDAR) 센서**: 드론과 UGV에 각각 장착된 센서 데이터
-
 위의 장치(PC, 통신 파이) 및 모든 라이다 센서는 UGV에 설치된 네트워크(공유기 등)를 통해 연결됩니다. 이렇게 취합된 데이터는 **본 레포지토리를 다운로드하여 실행 중인 메인 데스크톱**에서 최종 처리 및 제어됩니다.
 
 ### 주요 역할
@@ -19,12 +17,13 @@ ROS2-based UGV system for the CO-Paint project, including navigation, control, a
 - 드론 센서 데이터 수신 및 SLAM 처리
 - ROS2 기반 경로 탐색(Navigation), 주행 제어(Control) 및 통신(Communication) 모듈 통합 구동
 
+
 ## Getting Started
 ### 1. Clone 전 Git 설정 (Windows 사용자 필수)
 
 Windows 환경에서 클론하기 전에 아래 명령어를 먼저 실행하세요.
 ```bash
-git config --global core.autocrlf input
+git config --global core.autocrlf해 input
 ```
 
 > Windows는 Ubuntu와 달리 기본적으로 줄바꿈 문자를 CRLF로 변환하여 Docker 컨테이너나 Ubuntu에서 문제가 발생하는 것을 방지.
@@ -47,6 +46,8 @@ GCS PC는 `http://192.168.53.5` 혹은 `http://localhost`로 접속
 외부 PC는 같은 `192.168.53.0/24` 라우터에 연결 후 `http://192.168.53.5`로 접속
 WebSocket은 웹 서버의 `/rosbridge/` 경로에서 `ws://192.168.53.5/rosbridge/`로 확인
 
+
+
 ### 0-1. Network Traffic Flow
 ![Network Traffic Flow Diagram](images/README/Network%20Traffic%20Flow%20Diagram.png)
 
@@ -57,9 +58,11 @@ WebSocket은 웹 서버의 `/rosbridge/` 경로에서 `ws://192.168.53.5/rosbrid
 - ROS 2 DDS는 `20650-20800/udp`, Micro XRCE-DDS는 `8888/udp` 사용
 
 
+
 ### 1. Network test
 전체 네트워크 테스트는 `10. 전체 네트워크 테스트`에서 실행
 장치 ping, GCS Web UI, API 프록시, rosbridge WebSocket 프록시 함께 확인
+
 
 
 ### 2. PX4 1.16 의존성 준비
@@ -79,6 +82,7 @@ source ~/px4_msgs_ws/install/setup.bash
 ```
 
 
+
 #### 2-1. Drone 직접 제어 실행
 터미널 2개에서 통신 에이전트와 제어 GUI 노드를 순서대로 실행
 
@@ -93,6 +97,7 @@ cd ~/dev/projects/CO_Paint/ugv_system/control_code
 source install/setup.bash
 ros2 run px4_gui_ctrl gui_node
 ```
+
 
 
 ### 3. CycloneDDS / ROS 2 DDS / 방화벽 설정
@@ -163,20 +168,24 @@ sudo ufw enable
 
 ### 4. DDS 통신 및 DB 저장 확인
 #### 토픽 테스트
-##### 데스크톱 (수신)
+##### std_msgs type
+###### 데스크톱 (수신)
 ```bash
 docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; ros2 daemon stop; ros2 daemon start"
 
 docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; ros2 topic echo /copaint/net_test std_msgs/msg/String"
 ```
 
-##### 라즈베리 파이
+
+###### 라즈베리 파이
 ```bash
 ros2 topic pub /copaint/net_test std_msgs/msg/String "{data: 'uav_edge_test_from_personal_minipc'}" -r 1
 ```
 
 
-##### 데스크톱 (수신)
+
+##### px4_msgs type
+###### 데스크톱 (수신)
 ```bash
 cd ~/dev/projects/CO_Paint/ugv_system
 
@@ -187,7 +196,8 @@ docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash
 docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /workspace/install/local_setup.bash; ros2 topic echo /copaint/px4_net_test px4_msgs/msg/VehicleStatus --qos-reliability best_effort"
 ```
 
-##### 라즈베리 파이
+
+###### 라즈베리 파이
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/px4_msgs_ws/install/setup.bash  
@@ -197,6 +207,7 @@ ros2 topic pub -r 1 --qos-reliability best_effort \
   px4_msgs/msg/VehicleStatus \
   "{timestamp: 0, arming_state: 2, nav_state: 14, failsafe: false}"
 ```
+
 
 
 ##### 실패 시
@@ -222,7 +233,6 @@ curl http://192.168.53.5/api/topic-test-logs?limit=10
 ```
 
 **DBeaver에서 확인**
-
 이 데스크톱에서 DBeaver로 접속할 때는 아래 값으로 PostgreSQL 연결을 생성
 
 ```text
@@ -253,12 +263,11 @@ Password: ugv1234
 
 
 ## 새 PC 초기 세팅 절차
-
 아래 절차는 새 Ubuntu PC에 `ugv_system`을 처음 클론해서 GCS/Web UI 서버로 사용하는 경우를 기준으로 진행
 기준 네트워크는 위 `0. 기준 네트워크 및 접속 주소` 참고
 
-### 1. 기본 패키지 설치
 
+### 1. 기본 패키지 설치
 새 PC에서 터미널을 열고 실행
 it curl ca-certificates gnupg lsb-release iproute2 iputils-ping net-tools ufw 설치
 
@@ -297,8 +306,8 @@ docker compose version
 `newgrp docker` 이후 Docker 권한 문제 발생 시 로그아웃 후 다시 로그인
 
 
-### 2. 코드 클론
 
+### 2. 코드 클론
 권장 경로: `~/dev/projects/CO_Paint/ugv_system`
 
 ```bash
@@ -311,7 +320,6 @@ cd ~/dev/projects/CO_Paint/ugv_system
 
 
 클론 후 파일 위치 확인
-
 ```bash
 cd ~/dev/projects/CO_Paint/ugv_system
 ls -la
@@ -319,8 +327,8 @@ ls -la docker-compose.yml middleware/cyclonedds.xml scripts/check_network.sh
 ```
 
 
-### 3. 환경 파일 준비
 
+### 3. 환경 파일 준비
 `.env.example`을 복사해서 `.env` 생성
 
 ```bash
@@ -339,8 +347,8 @@ grep -E "GCS_IP|MINI_PC_IP|UAV_EDGE_IP|ROS_DOMAIN_ID|ROSBRIDGE_PORT|WEB_UI_PORT"
 ```
 
 
-### 4. GCS 고정 IP 설정
 
+### 4. GCS 고정 IP 설정
 현재 네트워크 인터페이스 이름 확인
 
 ```bash
@@ -349,6 +357,7 @@ ip -br addr
 nmcli device status
 nmcli connection show
 ```
+
 
 
 유선 인터페이스 연결 이름이 `Wired connection 1`이면 아래와 같이 설정
@@ -377,8 +386,8 @@ ping -c 3 192.168.53.1
 ```
 
 
-#### 4-1. 고정 IP 변경 시 수정해야 하는 곳
 
+#### 4-1. 고정 IP 변경 시 수정해야 하는 곳
 GCS IP를 예를 들어 `192.168.53.5`으로 바꾸는 경우 아래 파일을 모두 수정
 
 ```bash
@@ -432,6 +441,8 @@ docker compose ps
 scripts/check_network.sh
 ```
 
+
+
 #### 4-2. 무선 네트워크와 유선 Lan 동시 사용
 각 네트워크 간 대역대를 다르게 하기
 ```bash
@@ -461,8 +472,8 @@ ip route
 ```
 
 
-### 5. CycloneDDS 설정 확인
 
+### 5. CycloneDDS 설정 확인
 GCS PC는 `middleware/cyclonedds.xml`의 `NetworkInterfaceAddress`를 `192.168.53.5`로 유지
 
 ```bash
@@ -492,6 +503,7 @@ Peers:
 cd ~/dev/projects/CO_Paint/ugv_system
 grep -n "NetworkInterfaceAddress\\|Peer address" middleware/cyclonedds.xml
 ```
+
 
 
 ### 6. CycloneDDS / ROS 2 DDS / 방화벽 설정
@@ -562,8 +574,8 @@ sudo ufw enable
 ```
 
 
-### 7. Docker 서비스 실행
 
+### 7. Docker 서비스 실행
 처음 실행 또는 설정 변경 후 아래 명령으로 빌드/실행
 
 ```bash
@@ -596,8 +608,8 @@ Rosbridge WebSocket server started on port 9090
 ```
 
 
-### 8. GCS 로컬 접속 확인
 
+### 8. GCS 로컬 접속 확인
 GCS PC에서 직접 확인
 
 ```bash
@@ -636,8 +648,8 @@ HTTP/1.1 101 Switching Protocols
 ```
 
 
-### 9. 외부 PC 접속 확인
 
+### 9. 외부 PC 접속 확인
 외부 PC가 같은 라우터의 `192.168.53.0/24` 대역인지 확인
 
 Windows 외부 PC에서 IP 확인:
@@ -667,8 +679,8 @@ http://192.168.53.5
 `https://`가 아니라 반드시 `http://`로 접속. 페이지가 뜨는데 WebSocket만 `Connecting`이면 브라우저에서 `Ctrl+F5`로 강력 새로고침
 
 
-### 10. 전체 네트워크 테스트
 
+### 10. 전체 네트워크 테스트
 GCS PC에서 아래 스크립트를 실행
 
 ```bash
@@ -693,8 +705,8 @@ Mini PC 또는 Raspberry Pi가 꺼져 있으면 해당 ping만 실패할 수 있
 GCS Web UI/API/WebSocket 항목이 모두 OK면 웹 서버 쪽은 정상
 
 
-### 12. 자주 발생하는 문제
 
+### 12. 자주 발생하는 문제
 `http://192.168.53.5` 접속이 안 되는 경우:
 
 ```bash
