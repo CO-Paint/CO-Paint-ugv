@@ -40,8 +40,6 @@ master_node.py  ─  CO-PAINT UGV-UAV 협업 도색 시스템 마스터 노드
 
 [TODO - 팀원 확인 필요]
   □ UGV odometry 실제 토픽명  (파라미터 ugv_odom_topic 로 조정 가능)
-  □ /planner/generate_path 서비스: custom_msgs/GeneratePath 사용
-  □ /flight_control/mission_cmd 수신 후 Flight Control Node 완성
   □ UGV 이동 명령 인터페이스 (/ugv_control/target_pose JSON 또는 Nav2)
 
 [Web UI 명령]
