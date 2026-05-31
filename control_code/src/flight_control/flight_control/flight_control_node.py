@@ -4,14 +4,21 @@ Flight Control Node (UAV) - CO-Paint
 =====================================
 픽스호크(/fmu/in/...)로 명령을 퍼블리시하는 '유일한' 노드.
 
-마스터 노드의 고수준 명령(TAKEOFF/PAINT/LAND)과 Planner의 경로(nav_msgs/Path)를
-받아 px4_msgs/TrajectorySetpoint 로 변환해 20Hz로 픽스호크에 송신한다.
+마스터 노드의 고수준 명령을 받아 px4_msgs/TrajectorySetpoint 로 변환해
+20Hz로 픽스호크에 송신한다.
 
 설계 원칙:
 - 단일 노드, MultiThreadedExecutor + ReentrantCallbackGroup
 - 논블로킹: 콜백 내 sleep / while True 금지. 모든 진행은 20Hz 타이머에서 인덱스로 처리.
-- FSM: STANDBY -> TAKEOFF -> HOVER -> PAINT -> LAND -> STANDBY
 - 좌표계: 모든 setpoint/odometry 는 NED.
+
+명령 명세 (master_node.py 합의 기준):
+- TAKEOFF               : 현재 XY 유지, takeoff_altitude 까지 상승. 완료 시 TAKEOFF_OK 발행.
+- PAINT                 : 캐싱된 trajectory 추종. 완료 시 PAINT_DONE 발행.
+- ALIGN_FOR_LAND:x,y    : XY 만 갱신, Z 유지. 피드백 없음.
+- ALIGN_FOR_LAND:x,y,z  : (x,y,z) 로 이동. 피드백 없음.
+- START_AUTO_LAND       : Z 만 천천히 하강. landed 감지 시 LANDED_CONFIRM 발행 + disarm.
+- EMERGENCY             : 픽스호크 자체 자동 LAND 모드로 전환. (모든 상태에서 수용)
 """
 
 import math
@@ -24,7 +31,7 @@ from rclpy.qos import (
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 
-from std_msgs.msg import String, Bool
+from std_msgs.msg import String
 from nav_msgs.msg import Path
 
 from px4_msgs.msg import (
@@ -33,21 +40,23 @@ from px4_msgs.msg import (
 )
 
 
-# FSM 상태
-STANDBY = 'STANDBY'   # 지상 대기. setpoint 미송신.
-TAKEOFF = 'TAKEOFF'   # 이륙 고도까지 상승.
-HOVER   = 'HOVER'     # 경로 대기 / 호버.
-PAINT   = 'PAINT'     # 경로 추종.
-LAND    = 'LAND'      # Z만 천천히 하강 후 disarm.
+# ── FSM 상태 ─────────────────────────────────────────
+STANDBY   = 'STANDBY'     # 지상 대기. setpoint 미송신.
+TAKEOFF   = 'TAKEOFF'     # 이륙 고도까지 상승.
+HOVER     = 'HOVER'       # 호버, 다음 명령 대기.
+PAINTING  = 'PAINTING'    # 경로 추종.
+ALIGN     = 'ALIGN'       # 착륙 정렬용 XY/Z 이동.
+AUTO_LAND = 'AUTO_LAND'   # Z 만 점진 하강.
+EMERGENCY = 'EMERGENCY'   # 자동 LAND 모드 전환 후 손 뗌.
+
+# ── 외부 발행용 status 문자열 (master_node 가 기다리는 값) ──
+STATUS_TAKEOFF_OK     = 'TAKEOFF_OK'
+STATUS_PAINT_DONE     = 'PAINT_DONE'
+STATUS_LANDED_CONFIRM = 'LANDED_CONFIRM'
 
 
-def quat_to_yaw_ned(qx, qy, qz, qw):
-    """ROS Path pose 의 quaternion(ENU 기준 가정) yaw -> NED yaw.
-
-    Planner가 NED 좌표로 Path를 만든다면 그대로 yaw를 뽑으면 되지만,
-    ROS 관례상 Path가 ENU로 올 수 있어 부호를 마스터/Planner와 합의해야 한다.
-    여기서는 'Path가 이미 NED frame' 이라는 전제로 표준 yaw를 추출한다.
-    """
+def quat_to_yaw(qx, qy, qz, qw):
+    """quaternion -> yaw (라디안). Path 가 NED frame 이라는 전제."""
     siny_cosp = 2.0 * (qw * qz + qx * qy)
     cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
     return math.atan2(siny_cosp, cosy_cosp)
@@ -57,32 +66,27 @@ class FlightControlNode(Node):
     def __init__(self):
         super().__init__('flight_control_node')
 
-        # ---- 파라미터 (인터페이스 이름/튜닝값은 launch에서 덮어쓰기) ----
+        # ---- 파라미터 ----
         self.declare_parameter('mission_cmd_topic', '/flight_control/mission_cmd')
-        self.declare_parameter('trajectory_topic', '/flight_control/trajectory')
-        self.declare_parameter('status_topic', '/flight_control/status')
-        self.declare_parameter('landed_confirm_topic', '/flight_control/landed_confirm')
-        self.declare_parameter('takeoff_altitude', 1.5)     # m (상승 높이, 양수)
-        self.declare_parameter('cruise_speed', 0.3)         # m/s (도색 이동 속도)
-        self.declare_parameter('accept_radius', 0.15)       # m (waypoint 도달 판정)
-        self.declare_parameter('land_descent_rate', 0.2)    # m/s (착륙 하강 속도)
-        self.declare_parameter('offboard_warmup_sec', 0.6)  # offboard 진입 전 더미 송신 시간
+        self.declare_parameter('trajectory_topic',  '/flight_control/trajectory')
+        self.declare_parameter('status_topic',      '/flight_control/status')
+        self.declare_parameter('takeoff_altitude',  1.5)    # m, 양수
+        self.declare_parameter('accept_radius',     0.15)   # m, waypoint 도달 판정
+        self.declare_parameter('land_descent_rate', 0.2)    # m/s
+        self.declare_parameter('offboard_warmup_sec', 0.6)
 
-        self.takeoff_alt = float(self.get_parameter('takeoff_altitude').value)
-        self.cruise_speed = float(self.get_parameter('cruise_speed').value)
-        self.accept_radius = float(self.get_parameter('accept_radius').value)
+        self.takeoff_alt       = float(self.get_parameter('takeoff_altitude').value)
+        self.accept_radius     = float(self.get_parameter('accept_radius').value)
         self.land_descent_rate = float(self.get_parameter('land_descent_rate').value)
-        self.warmup_sec = float(self.get_parameter('offboard_warmup_sec').value)
+        self.warmup_sec        = float(self.get_parameter('offboard_warmup_sec').value)
 
         # ---- QoS ----
-        # 픽스호크 통신: BEST_EFFORT (기존 검증된 프로파일)
         px4_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
         )
-        # 마스터 노드 명령/상태: RELIABLE + TRANSIENT_LOCAL (명령 유실 방지)
         cmd_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -120,15 +124,11 @@ class FlightControlNode(Node):
             self.trajectory_cb, cmd_qos, callback_group=cb)
         self.status_pub = self.create_publisher(
             String, self.get_parameter('status_topic').value, cmd_qos)
-        self.landed_confirm_pub = self.create_publisher(
-            Bool, self.get_parameter('landed_confirm_topic').value, cmd_qos)
 
         # ---- 상태 변수 ----
         self.state = STANDBY
         self.curr = [0.0, 0.0, 0.0]   # NED 위치
         self.curr_yaw = 0.0
-        self.arming_state = VehicleStatus.ARMING_STATE_DISARMED
-        self.nav_state = VehicleStatus.NAVIGATION_STATE_MANUAL
         self.landed = True
 
         # 목표 setpoint (NED)
@@ -138,13 +138,13 @@ class FlightControlNode(Node):
         # offboard 진입 절차용
         self.offboard_requested = False
         self.warmup_count = 0
-        self.warmup_ticks = int(self.warmup_sec / 0.05)  # 20Hz 기준 틱 수
+        self.warmup_ticks = int(self.warmup_sec / 0.05)
 
         # 경로 추종용
-        self.path = []            # [(x, y, z, yaw), ...]
+        self.path = []          # [(x, y, z, yaw), ...]
         self.wp_index = 0
 
-        # 착륙용
+        # 자동 착륙용
         self.land_z = 0.0
 
         # ---- 20Hz 메인 타이머 ----
@@ -155,46 +155,51 @@ class FlightControlNode(Node):
     # ================= 콜백 =================
     def odom_cb(self, msg: VehicleOdometry):
         self.curr = [float(msg.position[0]), float(msg.position[1]), float(msg.position[2])]
-        self.curr_yaw = quat_to_yaw_ned(msg.q[1], msg.q[2], msg.q[3], msg.q[0])
+        self.curr_yaw = quat_to_yaw(msg.q[1], msg.q[2], msg.q[3], msg.q[0])
 
     def status_cb(self, msg: VehicleStatus):
-        self.arming_state = msg.arming_state
-        self.nav_state = msg.nav_state
+        # 현재 사용 안 함. 필요시 arming_state/nav_state 활용 가능.
+        pass
 
     def land_detected_cb(self, msg: VehicleLandDetected):
         self.landed = msg.landed
 
     def mission_cmd_cb(self, msg: String):
-        cmd = msg.data.strip().upper()
-        self.get_logger().info(f'Received mission_cmd: {cmd} (state={self.state})')
+        raw = msg.data.strip()
+        cmd_upper = raw.upper()
+        self.get_logger().info(f'Received mission_cmd: {raw} (state={self.state})')
 
-        if cmd == 'TAKEOFF':
+        # EMERGENCY: 모든 상태에서 수용
+        if cmd_upper == 'EMERGENCY':
+            self._handle_emergency()
+            return
+
+        if cmd_upper == 'TAKEOFF':
             self._handle_takeoff()
-        elif cmd == 'PAINT':
+        elif cmd_upper == 'PAINT':
             self._handle_paint()
-        elif cmd == 'LAND':
-            self._handle_land()
+        elif cmd_upper.startswith('ALIGN_FOR_LAND'):
+            self._handle_align(raw)
+        elif cmd_upper == 'START_AUTO_LAND':
+            self._handle_auto_land()
         else:
-            self.get_logger().warn(f'Unknown command ignored: {cmd}')
+            self.get_logger().warn(f'Unknown command ignored: {raw}')
 
     def trajectory_cb(self, msg: Path):
-        # 경로는 언제든 받아서 캐싱만. 추종 시작은 PAINT 명령에서.
         pts = []
         for ps in msg.poses:
             p = ps.pose.position
             q = ps.pose.orientation
             pts.append((float(p.x), float(p.y), float(p.z),
-                        quat_to_yaw_ned(q.x, q.y, q.z, q.w)))
+                        quat_to_yaw(q.x, q.y, q.z, q.w)))
         self.path = pts
         self.get_logger().info(f'Trajectory received: {len(pts)} waypoints')
 
-    # ================= FSM 전이 핸들러 =================
+    # ================= 명령 핸들러 =================
     def _handle_takeoff(self):
-        # STANDBY 에서만 이륙 허용 (방어 코드)
         if self.state != STANDBY:
             self.get_logger().warn(f'TAKEOFF ignored: must be in STANDBY (now {self.state})')
             return
-        # 현재 XY 유지하고 고도만 상승
         self.target = [self.curr[0], self.curr[1], -self.takeoff_alt]
         self.target_yaw = self.curr_yaw
         self.offboard_requested = False
@@ -209,47 +214,77 @@ class FlightControlNode(Node):
             self.get_logger().warn('PAINT ignored: no trajectory received')
             return
         self.wp_index = 0
-        self._set_state(PAINT)
+        self._set_state(PAINTING)
 
-    def _handle_land(self):
-        if self.state not in (HOVER, PAINT, TAKEOFF):
-            self.get_logger().warn(f'LAND ignored: not airborne (now {self.state})')
+    def _handle_align(self, raw_cmd: str):
+        """ALIGN_FOR_LAND:x,y  또는  ALIGN_FOR_LAND:x,y,z"""
+        if self.state not in (HOVER, PAINTING, ALIGN):
+            self.get_logger().warn(f'ALIGN_FOR_LAND ignored: not airborne (now {self.state})')
             return
-        # XY 현재 위치 고정, Z는 현재 고도부터 점진 하강
+        try:
+            payload = raw_cmd.split(':', 1)[1]
+            parts = [float(v) for v in payload.split(',')]
+        except (IndexError, ValueError) as e:
+            self.get_logger().error(f'ALIGN_FOR_LAND parse error: {raw_cmd} ({e})')
+            return
+
+        if len(parts) == 2:
+            x, y = parts
+            z = self.target[2]   # Z 유지
+        elif len(parts) == 3:
+            x, y, z = parts
+        else:
+            self.get_logger().error(f'ALIGN_FOR_LAND expects 2 or 3 args, got {len(parts)}')
+            return
+
+        self.target = [x, y, z]
+        self.target_yaw = self.curr_yaw
+        if self.state != ALIGN:
+            self._set_state(ALIGN)
+        self.get_logger().info(f'ALIGN target=({x:.2f}, {y:.2f}, {z:.2f})')
+
+    def _handle_auto_land(self):
+        if self.state not in (HOVER, ALIGN, PAINTING):
+            self.get_logger().warn(f'START_AUTO_LAND ignored: not airborne (now {self.state})')
+            return
         self.target = [self.curr[0], self.curr[1], self.curr[2]]
         self.target_yaw = self.curr_yaw
         self.land_z = self.curr[2]
-        self._set_state(LAND)
+        self._set_state(AUTO_LAND)
 
+    def _handle_emergency(self):
+        """EMERGENCY: 픽스호크 자체 자동 LAND 모드로 전환. offboard 송신 중단."""
+        self.get_logger().error('EMERGENCY received -> switching to PX4 NAV_LAND mode')
+        self._send_command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
+        self._set_state(EMERGENCY)
+
+    # ================= FSM 전이 =================
     def _set_state(self, new_state):
         self.state = new_state
         self.get_logger().info(f'State -> {new_state}')
-        self._publish_status()
-
-    def _publish_status(self):
-        self.status_pub.publish(String(data=self.state))
 
     # ================= 20Hz 제어 루프 =================
     def control_loop(self):
-        if self.state == STANDBY:
-            return  # 지상 대기: 아무것도 쏘지 않음
+        # STANDBY, EMERGENCY 는 offboard 송신 안 함
+        if self.state in (STANDBY, EMERGENCY):
+            return
 
-        # offboard 모드에서는 항상 heartbeat + setpoint 송신
         self._publish_offboard_mode()
 
         if self.state == TAKEOFF:
             self._loop_takeoff()
         elif self.state == HOVER:
-            self._loop_hover()
-        elif self.state == PAINT:
-            self._loop_paint()
-        elif self.state == LAND:
-            self._loop_land()
+            pass
+        elif self.state == PAINTING:
+            self._loop_painting()
+        elif self.state == ALIGN:
+            pass
+        elif self.state == AUTO_LAND:
+            self._loop_auto_land()
 
         self._publish_setpoint()
 
     def _loop_takeoff(self):
-        # 1) 더미 setpoint warmup -> 2) ARM -> 3) OFFBOARD 전환
         if not self.offboard_requested:
             self.warmup_count += 1
             if self.warmup_count == self.warmup_ticks:
@@ -257,35 +292,36 @@ class FlightControlNode(Node):
                 self._set_offboard()
                 self.offboard_requested = True
             return
-        # 이륙 고도 도달하면 HOVER
         if abs(self.curr[2] - self.target[2]) < self.accept_radius:
             self._set_state(HOVER)
+            self.status_pub.publish(String(data=STATUS_TAKEOFF_OK))
+            self.get_logger().info(f'TAKEOFF complete -> HOVER (published {STATUS_TAKEOFF_OK})')
 
-    def _loop_hover(self):
-        pass  # target 유지 (이미 setpoint 송신됨)
-
-    def _loop_paint(self):
+    def _loop_painting(self):
         if self.wp_index >= len(self.path):
-            self.get_logger().info('Trajectory complete -> HOVER')
             self._set_state(HOVER)
+            self.status_pub.publish(String(data=STATUS_PAINT_DONE))
+            self.get_logger().info(f'Trajectory complete -> HOVER (published {STATUS_PAINT_DONE})')
             return
         wx, wy, wz, wyaw = self.path[self.wp_index]
         self.target = [wx, wy, wz]
         self.target_yaw = wyaw
-        # 도달 판정 -> 다음 waypoint
-        dx, dy, dz = wx - self.curr[0], wy - self.curr[1], wz - self.curr[2]
+        dx = wx - self.curr[0]
+        dy = wy - self.curr[1]
+        dz = wz - self.curr[2]
         if math.sqrt(dx * dx + dy * dy + dz * dz) < self.accept_radius:
             self.wp_index += 1
 
-    def _loop_land(self):
-        # Z만 점진 하강 (1틱 = 0.05s)
+    def _loop_auto_land(self):
+        # Z만 점진 하강. NED 라 Z=0 이 지면, 음수가 공중.
         self.land_z += self.land_descent_rate * 0.05
+        if self.land_z > 0.0:
+            self.land_z = 0.0
         self.target = [self.target[0], self.target[1], self.land_z]
-        # 착륙 감지되면 disarm 후 STANDBY
         if self.landed:
             self._disarm()
-            self.landed_confirm_pub.publish(Bool(data=True))
-            self.get_logger().info('Landed & disarmed. landed_confirm=True')
+            self.status_pub.publish(String(data=STATUS_LANDED_CONFIRM))
+            self.get_logger().info(f'Landed & disarmed (published {STATUS_LANDED_CONFIRM})')
             self.path = []
             self.wp_index = 0
             self._set_state(STANDBY)
@@ -328,7 +364,6 @@ class FlightControlNode(Node):
         self._send_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
 
     def _set_offboard(self):
-        # param1=1 (custom mode), param2=6 (PX4 offboard)
         self._send_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
 
     def _now_us(self):
@@ -346,7 +381,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
