@@ -31,6 +31,7 @@ setup(
             'master_node             = px4_gui_ctrl.master_node:main',
             'flight_control_node     = px4_gui_ctrl.flight_control_node:main',
             'path_planner_node       = px4_gui_ctrl.path_planner_node:main',
+            'path_planner_node_v2    = px4_gui_ctrl.path_planner_node_v2:main',
         ],
     },
 )

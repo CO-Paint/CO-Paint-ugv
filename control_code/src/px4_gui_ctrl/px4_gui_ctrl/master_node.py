@@ -143,7 +143,7 @@ class MasterNode(Node):
 
     # 착륙 XY 정렬 허용 오차 (m)
     LAND_ALIGN_TOL  = 0.4
-    LAND_Z_HOVER    = -1.5   # XY 정렬 후 ArUco 대기 고도 (NED, 1.5m)
+    LAND_HOVER_ALT  = 1.5    # ArUco 감지 고도 (m, ENU 양수=위)
     ARUCO_TIMEOUT   = 30.0   # ArUco 못 찾을 시 강제 착륙 타임아웃 (초)
 
     def __init__(self):
@@ -192,6 +192,7 @@ class MasterNode(Node):
         self.latest_img: Optional[Image]    = None
         self.capture_cnt: int = 0
         self.trajectory: Optional[Path]     = None
+        self.paint_waypoints_json: Optional[str] = None
         self.paint_zone_raw: Optional[str]  = None
         self.exclusion_zones: list          = []
         self.paint_pending: bool            = False  # 이륙 완료됐는데 경로 아직 없을 때
@@ -256,6 +257,12 @@ class MasterNode(Node):
             self._on_aruco_detected, 10,
             callback_group=self.cb_ui)
 
+        # 착륙 노드 상태 (디버그/모니터링)
+        self.create_subscription(
+            String, '/landing_status',
+            self._on_landing_status, 10,
+            callback_group=self.cb_ui)
+
         # ══════════════════════════════════════
         #  발행
         # ══════════════════════════════════════
@@ -273,9 +280,17 @@ class MasterNode(Node):
         self.trajectory_pub = self.create_publisher(
             Path, '/flight_control/trajectory', qos_cmd)
 
+        # 도색 궤적 + paint_on 메타데이터 → 비행 제어 노드 (밸브 제어용)
+        self.paint_wp_pub = self.create_publisher(
+            String, '/flight_control/paint_waypoints', qos_cmd)
+
         # 자동착륙 노드 활성화 트리거
         self.land_trigger_pub = self.create_publisher(
             Bool, '/landing/start_auto_land', qos_cmd)
+
+        # UGV 드론 추종 활성화/비활성화
+        self.follow_enable_pub = self.create_publisher(
+            Bool, '/ugv/follow_enable', qos_cmd)
 
         # UGV 목표 위치
         # UGV 목표 좌표 발행 → Nav2 /goal_pose (Nav2가 알아서 경로 계산 + cmd_vel)
@@ -432,20 +447,24 @@ class MasterNode(Node):
         self.get_logger().info('✅ ArUco 마커 감지 → 자동착륙 시작!')
         self._force_auto_land()
 
+    def _on_landing_status(self, msg: String):
+        """착륙 노드 상태 수신 (TRACKING / LOCKED ON / SEARCHING 등)"""
+        if self.state == State.LANDING and self.landing_phase >= 3:
+            self.get_logger().info(
+                f'[착륙 추적] {msg.data}', throttle_duration_sec=1.0)
+
     def _force_auto_land(self):
         """
         자동착륙 최종 트리거 (ArUco 감지 or 타임아웃)
-        /landing/start_auto_land → pid_align_landing_node 활성화
-        START_AUTO_LAND → flight_control_node 느린 하강 시작
+        pid_align_landing_node 활성화 + Flight Control 느린 하강 동시 발송
         """
         self.landing_phase = 3
 
-        # pid_align_landing_node 활성화
-        # (/landing/start_auto_land Bool=True 구독 중)
+        # pid_align_landing_node 활성화 → UGV가 ArUco PID로 드론 밑 정렬
         land_msg      = Bool()
         land_msg.data = True
         self.land_trigger_pub.publish(land_msg)
-        self.get_logger().info('→ UGV: /landing/start_auto_land True (ArUco 추적 시작)')
+        self.get_logger().info('→ pid_align_landing_node 활성화')
 
         # Flight Control: 느린 하강 시작
         self._send_flight_cmd('START_AUTO_LAND')
@@ -534,7 +553,7 @@ class MasterNode(Node):
         self._send_flight_cmd('TAKEOFF')
 
     def _do_start_paint(self):
-        """도색 시작: 궤적 전달 + PAINT 명령"""
+        """도색 시작: 궤적 전달 + PAINT 명령 + UGV 추종 활성화"""
         if self.trajectory is None:
             self.get_logger().error(
                 '경로 없음 → ZONE_SETUP 및 구역 지정 먼저 필요')
@@ -542,13 +561,16 @@ class MasterNode(Node):
         self._transition(State.PAINTING)
         self._send_trajectory()
         self._send_flight_cmd('PAINT')
+        self.follow_enable_pub.publish(Bool(data=True))
+        self.get_logger().info('→ UGV follow 활성화')
 
     def _do_land(self):
         """
         착륙 시퀀스 시작
-        ① UAV → uav_home XY 위치로 이동 (고도 유지)
-        ② UGV → ugv_home XY 위치로 복귀
-        ③ 양쪽 XY 정렬 완료 + ArUco 감지 → 자동착륙
+        ① UGV 드론추종 비활성화 (pid_align_landing_node가 /cmd_vel 주도권 획득)
+        ② UAV → uav_home XY 위치로 이동 (고도 유지)
+        ③ UGV → ugv_home XY 위치로 복귀
+        ④ 양쪽 XY 정렬 완료 + ArUco 감지 → pid_align_landing_node 활성화 → 자동착륙
         """
         if not self.uav_home.saved or not self.ugv_home.saved:
             self.get_logger().error('홈 포인트 없음 → INIT 먼저 실행 필요')
@@ -557,26 +579,34 @@ class MasterNode(Node):
         self._transition(State.LANDING)
         self.landing_phase = 0
 
-        # ① UAV: 저장된 home XY로 이동 명령 (고도는 Flight Control이 유지)
+        # ① UGV 추종 비활성화 (착륙 시 pid_align_landing_node가 cmd_vel 독점)
+        self.follow_enable_pub.publish(Bool(data=False))
+
+        # ② UAV: 저장된 home XY로 이동 명령
+        #    uav_home은 ENU(/Odometry)에서 저장됨 → NED로 변환 필요
+        #    NED_x = ENU_y, NED_y = ENU_x
+        home_x_ned = self.uav_home.y
+        home_y_ned = self.uav_home.x
         align_cmd = (f'ALIGN_FOR_LAND:'
-                     f'{self.uav_home.x:.4f},'
-                     f'{self.uav_home.y:.4f}')
+                     f'{home_x_ned:.4f},'
+                     f'{home_y_ned:.4f}')
         self._send_flight_cmd(align_cmd)
 
-        # ② UGV: 저장된 home XY로 복귀 명령
-        ugv_msg                         = PoseStamped()
-        ugv_msg.header.frame_id         = 'map'
-        ugv_msg.header.stamp            = self.get_clock().now().to_msg()
-        ugv_msg.pose.position.x         = self.ugv_home.x
-        ugv_msg.pose.position.y         = self.ugv_home.y
-        ugv_msg.pose.position.z         = 0.0
-        ugv_msg.pose.orientation.w      = 1.0
+        # ③ UGV: 저장된 home XY로 복귀 명령 (ENU 좌표 그대로 — UGV는 ENU)
+        ugv_goal = json.dumps({
+            'x': self.ugv_home.x,
+            'y': self.ugv_home.y,
+            'mode': 'align_for_landing',
+        })
+        ugv_msg      = String()
+        ugv_msg.data = ugv_goal
         self.ugv_goal_pub.publish(ugv_msg)
 
         self.get_logger().info(
             '착륙 시퀀스 시작\n'
-            f'  UAV 목표: ({self.uav_home.x:.3f}, {self.uav_home.y:.3f})\n'
-            f'  UGV 목표: ({self.ugv_home.x:.3f}, {self.ugv_home.y:.3f})\n'
+            f'  UAV 목표 (NED): ({home_x_ned:.3f}, {home_y_ned:.3f})\n'
+            f'  UGV 목표 (ENU): ({self.ugv_home.x:.3f}, {self.ugv_home.y:.3f})\n'
+            '  UGV follow 비활성화 → pid_align_landing_node 대기\n'
             '  XY 정렬 완료 + ArUco 감지 대기 중...')
 
     def _check_landing_alignment(self):
@@ -607,20 +637,24 @@ class MasterNode(Node):
                 self.get_logger().info(
                     '✅ XY 정렬 완료 → Z축 하강 시작 (ArUco 감지 고도)')
                 # UAV를 ArUco 감지 가능 고도로 하강 명령
+                # uav_home은 ENU → NED 변환 필요
+                home_x_ned = self.uav_home.y
+                home_y_ned = self.uav_home.x
+                hover_z_ned = -self.LAND_HOVER_ALT
                 align_cmd = (
                     f'ALIGN_FOR_LAND:'
-                    f'{self.uav_home.x:.4f},'
-                    f'{self.uav_home.y:.4f},'
-                    f'{self.LAND_Z_HOVER:.4f}'
+                    f'{home_x_ned:.4f},'
+                    f'{home_y_ned:.4f},'
+                    f'{hover_z_ned:.4f}'
                 )
                 self._send_flight_cmd(align_cmd)
 
         # ── phase 1: Z축 하강 대기 ──
         elif self.landing_phase == 1:
-            uav_z   = self.uav_odom.pose.pose.position.z
-            z_err   = abs(uav_z - self.LAND_Z_HOVER)
+            uav_z   = self.uav_odom.pose.pose.position.z  # ENU z (양수=위)
+            z_err   = abs(uav_z - self.LAND_HOVER_ALT)
             self.get_logger().info(
-                f'[ALIGN Z] 현재:{uav_z:.2f}m  목표:{self.LAND_Z_HOVER:.2f}m'
+                f'[ALIGN Z] 현재(ENU):{uav_z:.2f}m  목표:{self.LAND_HOVER_ALT:.2f}m'
                 f'  오차:{z_err:.2f}m',
                 throttle_duration_sec=2.0)
 
@@ -724,6 +758,11 @@ class MasterNode(Node):
             result = future.result()
             if result.success:
                 self.trajectory = result.path
+                self.paint_waypoints_json = json.dumps([
+                    {'x': float(pw.x), 'y': float(pw.y), 'z': float(pw.z),
+                     'paint_on': bool(pw.paint_on), 'speed': float(pw.speed)}
+                    for pw in result.waypoints
+                ])
                 self.get_logger().info(
                     f'✅ 경로계획 완료: {result.waypoint_count}개 웨이포인트\n'
                     f'  {result.message}'
@@ -748,6 +787,7 @@ class MasterNode(Node):
         """경로계획 실패 시 빈 Path (드론 공중 대기)"""
         self.trajectory = Path()
         self.trajectory.header.frame_id = 'map'
+        self.paint_waypoints_json = None
         self.get_logger().warn('⚠️  폴백 경로 사용 중 (빈 궤적)')
 
     # ══════════════════════════════════════════════════════════
@@ -767,6 +807,8 @@ class MasterNode(Node):
             return
         self.trajectory.header.stamp = self.get_clock().now().to_msg()
         self.trajectory_pub.publish(self.trajectory)
+        if self.paint_waypoints_json is not None:
+            self.paint_wp_pub.publish(String(data=self.paint_waypoints_json))
         self.get_logger().info(
             f'궤적 전달: {len(self.trajectory.poses)}개 포인트')
 
