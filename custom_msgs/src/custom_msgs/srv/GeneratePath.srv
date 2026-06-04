@@ -1,0 +1,13 @@
+# 경로 생성 서비스
+# 마스터 노드(Client) → 경로계획 노드(Server)
+
+# Request
+float64 step        # 행 간격 (m), 0이면 서버 기본값 사용
+float64 wall_x      # 미사용 (호환성 유지, 0으로 전송)
+---
+# Response
+PaintWaypoint[] waypoints   # paint_on 포함된 전체 웨이포인트
+nav_msgs/Path path          # nav_msgs/Path (위치만, 호환용)
+int32 waypoint_count        # 총 웨이포인트 수
+bool success                # 성공 여부
+string message              # 결과 메시지 또는 에러 설명
