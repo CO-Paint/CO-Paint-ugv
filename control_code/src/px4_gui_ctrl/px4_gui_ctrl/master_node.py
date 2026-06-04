@@ -280,7 +280,7 @@ class MasterNode(Node):
         # UGV 목표 위치
         # UGV 목표 좌표 발행 → Nav2 /goal_pose (Nav2가 알아서 경로 계산 + cmd_vel)
         self.ugv_goal_pub = self.create_publisher(
-            PoseStamped, '/goal_pose', cmd_qos)
+            PoseStamped, '/goal_pose', qos_cmd)
 
         # ══════════════════════════════════════
         #  서비스 클라이언트
