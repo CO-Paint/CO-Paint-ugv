@@ -686,13 +686,12 @@ class MasterNode(Node):
 
     def _do_rtl(self):
         """착륙 후 UGV 초기 위치 복귀"""
-        ugv_msg                    = PoseStamped()
-        ugv_msg.header.frame_id    = 'map'
-        ugv_msg.header.stamp       = self.get_clock().now().to_msg()
-        ugv_msg.pose.position.x    = self.ugv_home.x
-        ugv_msg.pose.position.y    = self.ugv_home.y
-        ugv_msg.pose.position.z    = 0.0
-        ugv_msg.pose.orientation.w = 1.0
+        ugv_msg      = String()
+        ugv_msg.data = json.dumps({
+            'x': self.ugv_home.x,
+            'y': self.ugv_home.y,
+            'mode': 'return_home',
+        })
         self.ugv_goal_pub.publish(ugv_msg)
         self.get_logger().info('UGV 초기 위치 복귀 명령 발송')
         self._transition(State.DONE)
