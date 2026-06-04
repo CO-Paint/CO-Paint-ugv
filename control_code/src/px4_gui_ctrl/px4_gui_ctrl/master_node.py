@@ -19,7 +19,7 @@ master_node.py  ─  CO-PAINT UGV-UAV 협업 도색 시스템 마스터 노드
     최종 융합 위치: /fmu/out/vehicle_odometry
 
   UGV:
-    NUC: Velodyne → FAST-LIO → /ugv/odometry
+    NUC: Velodyne → FAST-LIO → /odom (Nav2 표준)
 
 [핵심 원칙]
   1. 마스터는 /fmu/in/* 에 절대 직접 접근하지 않는다.
@@ -38,9 +38,12 @@ master_node.py  ─  CO-PAINT UGV-UAV 협업 도색 시스템 마스터 노드
   ③ UAV+UGV가 init XY 근처 수렴 → ArUco 마커 감지
   ④ /landing/start_auto_land = True → 자동착륙 노드 활성화
 
-[TODO - 팀원 확인 필요]
-  □ UGV odometry 실제 토픽명  (파라미터 ugv_odom_topic 로 조정 가능)
-  □ UGV 이동 명령 인터페이스 (/ugv_control/target_pose JSON 또는 Nav2)
+[확정된 인터페이스]
+  ✅ UGV odometry: /odom (Nav2, nav_param.yaml 기준)
+  ✅ UGV 이동 명령: /goal_pose (PoseStamped) → Nav2 처리
+  ✅ UGV ArUco 추적: /landing/start_auto_land (Bool)
+  ✅ 경로계획: /planner/generate_path (custom_msgs/GeneratePath)
+  ✅ 비행 제어: /flight_control/mission_cmd (String)
 
 [Web UI 명령]
   ros2 topic pub --once /ui/command std_msgs/String 'data: "START_MAPPING"'
@@ -69,6 +72,7 @@ from typing import Optional
 from std_msgs.msg import String, Bool
 from nav_msgs.msg import Odometry, Path
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import PoseStamped
 from cv_bridge import CvBridge
 from custom_msgs.srv import GeneratePath
 
@@ -149,7 +153,7 @@ class MasterNode(Node):
         self.declare_parameter('capture_dir',    '/tmp/copaint_capture')
         self.declare_parameter('uav_odom_topic', '/Odometry')
         # UGV odometry 토픽명: 팀원 확인 후 launch 인자로 덮어씀
-        self.declare_parameter('ugv_odom_topic', '/ugv/odometry')
+        self.declare_parameter('ugv_odom_topic', '/odom')
         self.declare_parameter('land_align_tol', self.LAND_ALIGN_TOL)
 
         self.capture_dir    = self.get_parameter('capture_dir').value
@@ -274,8 +278,9 @@ class MasterNode(Node):
             Bool, '/landing/start_auto_land', qos_cmd)
 
         # UGV 목표 위치
+        # UGV 목표 좌표 발행 → Nav2 /goal_pose (Nav2가 알아서 경로 계산 + cmd_vel)
         self.ugv_goal_pub = self.create_publisher(
-            String, '/ugv_control/target_pose', 10)
+            PoseStamped, '/goal_pose', cmd_qos)
 
         # ══════════════════════════════════════
         #  서비스 클라이언트
@@ -430,23 +435,21 @@ class MasterNode(Node):
     def _force_auto_land(self):
         """
         자동착륙 최종 트리거 (ArUco 감지 or 타임아웃)
-        UGV START_TRACKING + Flight Control START_AUTO_LAND 동시 발송
+        /landing/start_auto_land → pid_align_landing_node 활성화
+        START_AUTO_LAND → flight_control_node 느린 하강 시작
         """
         self.landing_phase = 3
 
+        # pid_align_landing_node 활성화
+        # (/landing/start_auto_land Bool=True 구독 중)
         land_msg      = Bool()
         land_msg.data = True
         self.land_trigger_pub.publish(land_msg)
-
-        # UGV ArUco 추적 노드 활성화
-        tracking_msg      = String()
-        tracking_msg.data = 'START_TRACKING'
-        self.ugv_goal_pub.publish(tracking_msg)
-        self.get_logger().info('→ UGV: START_TRACKING 전송')
+        self.get_logger().info('→ UGV: /landing/start_auto_land True (ArUco 추적 시작)')
 
         # Flight Control: 느린 하강 시작
         self._send_flight_cmd('START_AUTO_LAND')
-        self.get_logger().info('→ Flight Control: START_AUTO_LAND 전송')
+        self.get_logger().info('→ Flight Control: START_AUTO_LAND')
 
     # ══════════════════════════════════════════════════════════
     #  미션 액션
@@ -561,13 +564,13 @@ class MasterNode(Node):
         self._send_flight_cmd(align_cmd)
 
         # ② UGV: 저장된 home XY로 복귀 명령
-        ugv_goal = json.dumps({
-            'x': self.ugv_home.x,
-            'y': self.ugv_home.y,
-            'mode': 'align_for_landing',
-        })
-        ugv_msg      = String()
-        ugv_msg.data = ugv_goal
+        ugv_msg                         = PoseStamped()
+        ugv_msg.header.frame_id         = 'map'
+        ugv_msg.header.stamp            = self.get_clock().now().to_msg()
+        ugv_msg.pose.position.x         = self.ugv_home.x
+        ugv_msg.pose.position.y         = self.ugv_home.y
+        ugv_msg.pose.position.z         = 0.0
+        ugv_msg.pose.orientation.w      = 1.0
         self.ugv_goal_pub.publish(ugv_msg)
 
         self.get_logger().info(
@@ -649,12 +652,13 @@ class MasterNode(Node):
 
     def _do_rtl(self):
         """착륙 후 UGV 초기 위치 복귀"""
-        ugv_msg      = String()
-        ugv_msg.data = json.dumps({
-            'x': self.ugv_home.x,
-            'y': self.ugv_home.y,
-            'mode': 'return_home',
-        })
+        ugv_msg                    = PoseStamped()
+        ugv_msg.header.frame_id    = 'map'
+        ugv_msg.header.stamp       = self.get_clock().now().to_msg()
+        ugv_msg.pose.position.x    = self.ugv_home.x
+        ugv_msg.pose.position.y    = self.ugv_home.y
+        ugv_msg.pose.position.z    = 0.0
+        ugv_msg.pose.orientation.w = 1.0
         self.ugv_goal_pub.publish(ugv_msg)
         self.get_logger().info('UGV 초기 위치 복귀 명령 발송')
         self._transition(State.DONE)
