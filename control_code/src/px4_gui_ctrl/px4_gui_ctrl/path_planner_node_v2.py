@@ -56,7 +56,7 @@ path_planner_node.py  ─  CO-PAINT Path Planner Node
   1. paint_zone 4점 ENU → NED 변환
   2. 변환된 4점에서 wall_x_ned (X 평균), Y/Z 범위 추출
   3. exclusion_zones 정규화 좌표 → NED Y/Z 실좌표 변환
-  4. Z_max(낮은 고도) → Z_min(높은 고도) 방향으로 step 씩 행 생성
+  4. Z_min(높은 고도) → Z_max(낮은 고도) 방향으로 step 씩 행 생성 (위→아래 도색)
   5. 각 행에서 금지구역 Y 구간을 빼 → 페인트 ON 구간 / 스킵 구간 분리
   6. 지그재그 방향 교대 (좌→우 / 우→좌)
   7. yaw = 0 (벽을 바라봄, +X 방향) 으로 quaternion 채움
@@ -295,10 +295,10 @@ def generate_zigzag_waypoints_ned(
     margin = step * 0.5
 
     waypoints: List[Waypoint3D] = []
-    current_z = z_max   # 낮은 고도(덜 음수)부터 시작 → 높은 고도(더 음수)
+    current_z = z_min   # 높은 고도(더 음수)부터 시작 → 낮은 고도(덜 음수)
     direction = 1
 
-    while current_z >= z_min - 1e-6:
+    while current_z <= z_max + 1e-6:
         segments = get_row_segments(
             y_min, y_max, current_z,
             world_exclusions,
@@ -307,7 +307,7 @@ def generate_zigzag_waypoints_ned(
         row_wps = segments_to_waypoints(segments, wall_x, current_z, direction)
         waypoints.extend(row_wps)
 
-        current_z = round(current_z - step, 6)
+        current_z = round(current_z + step, 6)
         direction *= -1
 
     return waypoints
