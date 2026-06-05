@@ -72,7 +72,6 @@ from typing import Optional
 from std_msgs.msg import String, Bool
 from nav_msgs.msg import Odometry, Path
 from sensor_msgs.msg import Image
-from geometry_msgs.msg import PoseStamped
 from cv_bridge import CvBridge
 from custom_msgs.srv import GeneratePath
 
@@ -104,7 +103,6 @@ VALID_TRANSITIONS: dict[str, list[State]] = {
     "TAKEOFF":       [State.INIT],
     "START_PAINT":   [State.TAKEOFF, State.PAINTING],
     "LAND":          [State.PAINTING, State.TAKEOFF],
-    "RTL":           [State.LANDING, State.DONE],
     "EMERGENCY":     list(State),
 }
 
@@ -292,11 +290,6 @@ class MasterNode(Node):
         self.follow_enable_pub = self.create_publisher(
             Bool, '/ugv/follow_enable', qos_cmd)
 
-        # UGV 목표 위치
-        # UGV 목표 좌표 발행 → Nav2 /goal_pose (Nav2가 알아서 경로 계산 + cmd_vel)
-        self.ugv_goal_pub = self.create_publisher(
-            PoseStamped, '/goal_pose', qos_cmd)
-
         # ══════════════════════════════════════
         #  서비스 클라이언트
         # ══════════════════════════════════════
@@ -357,7 +350,6 @@ class MasterNode(Node):
         elif cmd == 'TAKEOFF':       self._do_takeoff()
         elif cmd == 'START_PAINT':   self._do_start_paint()
         elif cmd == 'LAND':          self._do_land()
-        elif cmd == 'RTL':           self._do_rtl()
         elif cmd == 'EMERGENCY':     self._do_emergency()
 
     def _on_paint_zone(self, msg: String):
@@ -423,9 +415,8 @@ class MasterNode(Node):
             self._do_land()          # ⑥ 자동 연속
 
         elif status == 'LANDED_CONFIRM' and self.state == State.LANDING:
-            self.get_logger().info('✅ 착륙 확인 → RTL')
-            self._transition(State.RTL)
-            self._do_rtl()
+            self.get_logger().info('✅ 착륙 확인 → 임무 완료')
+            self._transition(State.DONE)
 
     def _on_aruco_detected(self, msg: Bool):
         """
@@ -456,9 +447,13 @@ class MasterNode(Node):
     def _force_auto_land(self):
         """
         자동착륙 최종 트리거 (ArUco 감지 or 타임아웃)
-        pid_align_landing_node 활성화 + Flight Control 느린 하강 동시 발송
+        follow 비활성화 + pid_align_landing_node 활성화 + Flight Control 느린 하강
         """
         self.landing_phase = 3
+
+        # follow_node 비활성화 → pid_align_landing_node가 /cmd_vel 독점
+        self.follow_enable_pub.publish(Bool(data=False))
+        self.get_logger().info('→ UGV follow 비활성화')
 
         # pid_align_landing_node 활성화 → UGV가 ArUco PID로 드론 밑 정렬
         land_msg      = Bool()
@@ -567,10 +562,9 @@ class MasterNode(Node):
     def _do_land(self):
         """
         착륙 시퀀스 시작
-        ① UGV 드론추종 비활성화 (pid_align_landing_node가 /cmd_vel 주도권 획득)
-        ② UAV → uav_home XY 위치로 이동 (고도 유지)
-        ③ UGV → ugv_home XY 위치로 복귀
-        ④ 양쪽 XY 정렬 완료 + ArUco 감지 → pid_align_landing_node 활성화 → 자동착륙
+        ① UAV → home XY 위치로 이동 (고도 유지)
+        ② UGV는 follow_node가 드론을 따라 자동으로 이동
+        ③ XY 정렬 완료 + ArUco 감지 → follow 끄기 → pid_align_landing_node → 자동착륙
         """
         if not self.uav_home.saved or not self.ugv_home.saved:
             self.get_logger().error('홈 포인트 없음 → INIT 먼저 실행 필요')
@@ -579,12 +573,10 @@ class MasterNode(Node):
         self._transition(State.LANDING)
         self.landing_phase = 0
 
-        # ① UGV 추종 비활성화 (착륙 시 pid_align_landing_node가 cmd_vel 독점)
-        self.follow_enable_pub.publish(Bool(data=False))
+        # follow_node 유지 → 드론이 홈으로 가면 UGV도 따라감
+        # (phase 3 진입 시 비활성화)
 
-        # ② UAV: 저장된 home XY로 이동 명령
-        #    uav_home은 ENU(/Odometry)에서 저장됨 → NED로 변환 필요
-        #    NED_x = ENU_y, NED_y = ENU_x
+        # UAV: 저장된 home XY로 이동 명령 (ENU → NED 변환)
         home_x_ned = self.uav_home.y
         home_y_ned = self.uav_home.x
         align_cmd = (f'ALIGN_FOR_LAND:'
@@ -592,21 +584,10 @@ class MasterNode(Node):
                      f'{home_y_ned:.4f}')
         self._send_flight_cmd(align_cmd)
 
-        # ③ UGV: 저장된 home XY로 복귀 명령 (ENU 좌표 그대로 — UGV는 ENU)
-        ugv_goal = json.dumps({
-            'x': self.ugv_home.x,
-            'y': self.ugv_home.y,
-            'mode': 'align_for_landing',
-        })
-        ugv_msg      = String()
-        ugv_msg.data = ugv_goal
-        self.ugv_goal_pub.publish(ugv_msg)
-
         self.get_logger().info(
             '착륙 시퀀스 시작\n'
             f'  UAV 목표 (NED): ({home_x_ned:.3f}, {home_y_ned:.3f})\n'
-            f'  UGV 목표 (ENU): ({self.ugv_home.x:.3f}, {self.ugv_home.y:.3f})\n'
-            '  UGV follow 비활성화 → pid_align_landing_node 대기\n'
+            '  UGV: follow_node로 드론 추종 유지\n'
             '  XY 정렬 완료 + ArUco 감지 대기 중...')
 
     def _check_landing_alignment(self):
@@ -622,17 +603,16 @@ class MasterNode(Node):
         if self.uav_odom is None or self.ugv_odom is None:
             return
 
-        # ── phase 0: XY 정렬 대기 ──
+        # ── phase 0: UAV XY 정렬 대기 (UGV는 follow_node로 자동 추종) ──
         if self.landing_phase == 0:
             uav_err = self.uav_home.dist_xy(self.uav_odom)
-            ugv_err = self.ugv_home.dist_xy(self.ugv_odom)
 
             self.get_logger().info(
-                f'[ALIGN XY] UAV:{uav_err:.2f}m  UGV:{ugv_err:.2f}m'
+                f'[ALIGN XY] UAV:{uav_err:.2f}m'
                 f'  (허용:{self.land_align_tol:.2f}m)',
                 throttle_duration_sec=2.0)
 
-            if uav_err < self.land_align_tol and ugv_err < self.land_align_tol:
+            if uav_err < self.land_align_tol:
                 self.landing_phase = 1
                 self.get_logger().info(
                     '✅ XY 정렬 완료 → Z축 하강 시작 (ArUco 감지 고도)')
@@ -683,18 +663,6 @@ class MasterNode(Node):
                     f'⚠️  ArUco {self.ARUCO_TIMEOUT}초 타임아웃 → 강제 착륙')
                 self.landing_phase = 3
                 self._force_auto_land()
-
-    def _do_rtl(self):
-        """착륙 후 UGV 초기 위치 복귀"""
-        ugv_msg      = String()
-        ugv_msg.data = json.dumps({
-            'x': self.ugv_home.x,
-            'y': self.ugv_home.y,
-            'mode': 'return_home',
-        })
-        self.ugv_goal_pub.publish(ugv_msg)
-        self.get_logger().info('UGV 초기 위치 복귀 명령 발송')
-        self._transition(State.DONE)
 
     def _do_emergency(self):
         """긴급 정지 → Flight Control에 위임"""
