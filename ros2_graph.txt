@@ -1,0 +1,658 @@
+=== Node: /GlobalmapServerNodelet ===
+/GlobalmapServerNodelet
+  Subscribers:
+    /clock: rosgraph_msgs/msg/Clock
+    /map_request/pcd: std_msgs/msg/String
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+  Publishers:
+    /globalmap: sensor_msgs/msg/PointCloud2
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /GlobalmapServerNodelet/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /GlobalmapServerNodelet/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /GlobalmapServerNodelet/get_parameters: rcl_interfaces/srv/GetParameters
+    /GlobalmapServerNodelet/list_parameters: rcl_interfaces/srv/ListParameters
+    /GlobalmapServerNodelet/set_parameters: rcl_interfaces/srv/SetParameters
+    /GlobalmapServerNodelet/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /HdlLocalizationNodelet ===
+/HdlLocalizationNodelet
+  Subscribers:
+    /clock: rosgraph_msgs/msg/Clock
+    /globalmap: sensor_msgs/msg/PointCloud2
+    /initialpose: geometry_msgs/msg/PoseWithCovarianceStamped
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /velodyne_points: sensor_msgs/msg/PointCloud2
+  Publishers:
+    /aligned_points: sensor_msgs/msg/PointCloud2
+    /odom: nav_msgs/msg/Odometry
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /status: hdl_localization/msg/ScanMatchingStatus
+    /tf: tf2_msgs/msg/TFMessage
+  Service Servers:
+    /HdlLocalizationNodelet/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /HdlLocalizationNodelet/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /HdlLocalizationNodelet/get_parameters: rcl_interfaces/srv/GetParameters
+    /HdlLocalizationNodelet/list_parameters: rcl_interfaces/srv/ListParameters
+    /HdlLocalizationNodelet/set_parameters: rcl_interfaces/srv/SetParameters
+    /HdlLocalizationNodelet/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /arduino_mecanum_bridge ===
+/arduino_mecanum_bridge
+  Subscribers:
+    /cmd_vel: geometry_msgs/msg/Twist
+    /wheel_vel: std_msgs/msg/Float32MultiArray
+  Publishers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /wheel_state: std_msgs/msg/Float32MultiArray
+  Service Servers:
+    /arduino_mecanum_bridge/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /arduino_mecanum_bridge/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /arduino_mecanum_bridge/get_parameters: rcl_interfaces/srv/GetParameters
+    /arduino_mecanum_bridge/list_parameters: rcl_interfaces/srv/ListParameters
+    /arduino_mecanum_bridge/set_parameters: rcl_interfaces/srv/SetParameters
+    /arduino_mecanum_bridge/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /container ===
+/container
+  Subscribers:
+    /clock: rosgraph_msgs/msg/Clock
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+  Publishers:
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /fastlio_to_px4_bridge ===
+/fastlio_to_px4_bridge
+  Subscribers:
+    /Odometry: nav_msgs/msg/Odometry
+  Publishers:
+    /fmu/in/vehicle_visual_odometry: px4_msgs/msg/VehicleOdometry
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /fastlio_to_px4_bridge/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /fastlio_to_px4_bridge/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /fastlio_to_px4_bridge/get_parameters: rcl_interfaces/srv/GetParameters
+    /fastlio_to_px4_bridge/list_parameters: rcl_interfaces/srv/ListParameters
+    /fastlio_to_px4_bridge/set_parameters: rcl_interfaces/srv/SetParameters
+    /fastlio_to_px4_bridge/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /flight_control_node ===
+/flight_control_node
+  Subscribers:
+    /flight_control/mission_cmd: std_msgs/msg/String
+    /flight_control/paint_waypoints: std_msgs/msg/String
+    /flight_control/trajectory: nav_msgs/msg/Path
+    /fmu/out/vehicle_land_detected: px4_msgs/msg/VehicleLandDetected
+    /fmu/out/vehicle_odometry: px4_msgs/msg/VehicleOdometry
+    /fmu/out/vehicle_status_v1: px4_msgs/msg/VehicleStatus
+    /valve/status: std_msgs/msg/String
+  Publishers:
+    /flight_control/status: std_msgs/msg/String
+    /fmu/in/offboard_control_mode: px4_msgs/msg/OffboardControlMode
+    /fmu/in/trajectory_setpoint: px4_msgs/msg/TrajectorySetpoint
+    /fmu/in/vehicle_command: px4_msgs/msg/VehicleCommand
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /valve/command: std_msgs/msg/String
+  Service Servers:
+    /flight_control_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /flight_control_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /flight_control_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /flight_control_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /flight_control_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /flight_control_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /global_localization ===
+/global_localization
+  Subscribers:
+    /Odometry: nav_msgs/msg/Odometry
+    /cloud_registered: sensor_msgs/msg/PointCloud2
+    /initialpose: geometry_msgs/msg/PoseWithCovarianceStamped
+    /tf: tf2_msgs/msg/TFMessage
+    /tf_static: tf2_msgs/msg/TFMessage
+  Publishers:
+    /cur_scan_in_map: sensor_msgs/msg/PointCloud2
+    /map_to_odom: nav_msgs/msg/Odometry
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /submap: sensor_msgs/msg/PointCloud2
+  Service Servers:
+    /global_localization/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /global_localization/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /global_localization/get_parameters: rcl_interfaces/srv/GetParameters
+    /global_localization/list_parameters: rcl_interfaces/srv/ListParameters
+    /global_localization/set_parameters: rcl_interfaces/srv/SetParameters
+    /global_localization/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /laser_mapping ===
+/laser_mapping
+  Subscribers:
+    /livox/imu: sensor_msgs/msg/Imu
+    /livox/lidar: livox_ros_driver2/msg/CustomMsg
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+  Publishers:
+    /Laser_map: sensor_msgs/msg/PointCloud2
+    /Odometry: nav_msgs/msg/Odometry
+    /cloud_effected: sensor_msgs/msg/PointCloud2
+    /cloud_registered: sensor_msgs/msg/PointCloud2
+    /cloud_registered_body: sensor_msgs/msg/PointCloud2
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /path: nav_msgs/msg/Path
+    /rosout: rcl_interfaces/msg/Log
+    /tf: tf2_msgs/msg/TFMessage
+  Service Servers:
+    /laser_mapping/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /laser_mapping/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /laser_mapping/get_parameters: rcl_interfaces/srv/GetParameters
+    /laser_mapping/list_parameters: rcl_interfaces/srv/ListParameters
+    /laser_mapping/set_parameters: rcl_interfaces/srv/SetParameters
+    /laser_mapping/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /launch_ros_2079490 ===
+/launch_ros_2079490
+  Subscribers:
+
+  Publishers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /launch_ros_2079490/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /launch_ros_2079490/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /launch_ros_2079490/get_parameters: rcl_interfaces/srv/GetParameters
+    /launch_ros_2079490/list_parameters: rcl_interfaces/srv/ListParameters
+    /launch_ros_2079490/set_parameters: rcl_interfaces/srv/SetParameters
+    /launch_ros_2079490/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /lidar_tf ===
+/lidar_tf
+  Subscribers:
+    /clock: rosgraph_msgs/msg/Clock
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+  Publishers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /tf_static: tf2_msgs/msg/TFMessage
+  Service Servers:
+    /lidar_tf/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /lidar_tf/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /lidar_tf/get_parameters: rcl_interfaces/srv/GetParameters
+    /lidar_tf/list_parameters: rcl_interfaces/srv/ListParameters
+    /lidar_tf/set_parameters: rcl_interfaces/srv/SetParameters
+    /lidar_tf/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /map_publisher ===
+/map_publisher
+  Subscribers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+  Publishers:
+    /cloud_pcd: sensor_msgs/msg/PointCloud2
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /map_publisher/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /map_publisher/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /map_publisher/get_parameters: rcl_interfaces/srv/GetParameters
+    /map_publisher/list_parameters: rcl_interfaces/srv/ListParameters
+    /map_publisher/set_parameters: rcl_interfaces/srv/SetParameters
+    /map_publisher/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /master_node ===
+/master_node
+  Subscribers:
+    /Odometry: nav_msgs/msg/Odometry
+    /aruco_landing/marker_detected: std_msgs/msg/Bool
+    /camera/camera/color/image_raw: sensor_msgs/msg/Image
+    /flight_control/status: std_msgs/msg/String
+    /landing_status: std_msgs/msg/String
+    /odom: nav_msgs/msg/Odometry
+    /ui/command: std_msgs/msg/String
+    /ui/paint_zone: std_msgs/msg/String
+    /vision/exclusion_zones: std_msgs/msg/String
+  Publishers:
+    /flight_control/mission_cmd: std_msgs/msg/String
+    /flight_control/paint_waypoints: std_msgs/msg/String
+    /flight_control/trajectory: nav_msgs/msg/Path
+    /landing/start_auto_land: std_msgs/msg/Bool
+    /master/current_state: std_msgs/msg/String
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /planner/exclusion_zones: std_msgs/msg/String
+    /planner/paint_zone: std_msgs/msg/String
+    /rosout: rcl_interfaces/msg/Log
+    /ugv/follow_enable: std_msgs/msg/Bool
+  Service Servers:
+    /master_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /master_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /master_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /master_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /master_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /master_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+    /planner/generate_path: custom_msgs/srv/GeneratePath
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /odom_monitor_gui ===
+/odom_monitor_gui
+  Subscribers:
+    /Odometry: nav_msgs/msg/Odometry
+    /fmu/in/vehicle_visual_odometry: px4_msgs/msg/VehicleOdometry
+    /fmu/out/vehicle_odometry: px4_msgs/msg/VehicleOdometry
+  Publishers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /odom_monitor_gui/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /odom_monitor_gui/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /odom_monitor_gui/get_parameters: rcl_interfaces/srv/GetParameters
+    /odom_monitor_gui/list_parameters: rcl_interfaces/srv/ListParameters
+    /odom_monitor_gui/set_parameters: rcl_interfaces/srv/SetParameters
+    /odom_monitor_gui/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /pid_landing_controller_node ===
+/pid_landing_controller_node
+  Subscribers:
+    /flight_control/status: std_msgs/msg/String
+    /landing/start_auto_land: std_msgs/msg/Bool
+  Publishers:
+    /aruco_landing/marker_detected: std_msgs/msg/Bool
+    /cmd_vel: geometry_msgs/msg/Twist
+    /landing_status: std_msgs/msg/String
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /pid_landing_controller_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /pid_landing_controller_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /pid_landing_controller_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /pid_landing_controller_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /pid_landing_controller_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /pid_landing_controller_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /rosbridge_websocket ===
+/rosbridge_websocket
+  Subscribers:
+    /copaint/net_test: std_msgs/msg/String
+    /copaint/px4_net_test: px4_msgs/msg/VehicleStatus
+    /fmu/out/battery_status: px4_msgs/msg/BatteryStatus
+    /fmu/out/vehicle_local_position: px4_msgs/msg/VehicleLocalPosition
+    /fmu/out/vehicle_status: px4_msgs/msg/VehicleStatus
+    /fmu/out/vehicle_status_v1: px4_msgs/msg/VehicleStatus
+  Publishers:
+    /client_count: std_msgs/msg/Int32
+    /connected_clients: rosbridge_msgs/msg/ConnectedClients
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /rosbridge_websocket/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /rosbridge_websocket/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /rosbridge_websocket/get_parameters: rcl_interfaces/srv/GetParameters
+    /rosbridge_websocket/list_parameters: rcl_interfaces/srv/ListParameters
+    /rosbridge_websocket/set_parameters: rcl_interfaces/srv/SetParameters
+    /rosbridge_websocket/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /rqt_gui_py_node_115940 ===
+/rqt_gui_py_node_115940
+  Subscribers:
+
+  Publishers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /rqt_gui_py_node_115940/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /rqt_gui_py_node_115940/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /rqt_gui_py_node_115940/get_parameters: rcl_interfaces/srv/GetParameters
+    /rqt_gui_py_node_115940/list_parameters: rcl_interfaces/srv/ListParameters
+    /rqt_gui_py_node_115940/set_parameters: rcl_interfaces/srv/SetParameters
+    /rqt_gui_py_node_115940/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /rviz ===
+/rviz
+  Subscribers:
+    /Odometry: nav_msgs/msg/Odometry
+    /cloud_pcd: sensor_msgs/msg/PointCloud2
+    /cur_scan_in_map: sensor_msgs/msg/PointCloud2
+    /localization: nav_msgs/msg/Odometry
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /path: nav_msgs/msg/Path
+    /submap: sensor_msgs/msg/PointCloud2
+  Publishers:
+    /clicked_point: geometry_msgs/msg/PointStamped
+    /goal_pose: geometry_msgs/msg/PoseStamped
+    /initialpose: geometry_msgs/msg/PoseWithCovarianceStamped
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /rviz/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /rviz/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /rviz/get_parameters: rcl_interfaces/srv/GetParameters
+    /rviz/list_parameters: rcl_interfaces/srv/ListParameters
+    /rviz/set_parameters: rcl_interfaces/srv/SetParameters
+    /rviz/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /rviz2 ===
+/rviz2
+  Subscribers:
+    /aligned_points: sensor_msgs/msg/PointCloud2
+    /clock: rosgraph_msgs/msg/Clock
+    /globalmap: sensor_msgs/msg/PointCloud2
+    /map: nav_msgs/msg/OccupancyGrid
+    /map_updates: map_msgs/msg/OccupancyGridUpdate
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /plan: nav_msgs/msg/Path
+  Publishers:
+    /clicked_point: geometry_msgs/msg/PointStamped
+    /goal_pose: geometry_msgs/msg/PoseStamped
+    /initialpose: geometry_msgs/msg/PoseWithCovarianceStamped
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /rviz2/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /rviz2/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /rviz2/get_parameters: rcl_interfaces/srv/GetParameters
+    /rviz2/list_parameters: rcl_interfaces/srv/ListParameters
+    /rviz2/set_parameters: rcl_interfaces/srv/SetParameters
+    /rviz2/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /transform_fusion ===
+/transform_fusion
+  Subscribers:
+    /Odometry: nav_msgs/msg/Odometry
+    /map_to_odom: nav_msgs/msg/Odometry
+  Publishers:
+    /localization: nav_msgs/msg/Odometry
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /tf: tf2_msgs/msg/TFMessage
+  Service Servers:
+    /transform_fusion/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /transform_fusion/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /transform_fusion/get_parameters: rcl_interfaces/srv/GetParameters
+    /transform_fusion/list_parameters: rcl_interfaces/srv/ListParameters
+    /transform_fusion/set_parameters: rcl_interfaces/srv/SetParameters
+    /transform_fusion/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /transform_listener_impl_560424c71380 ===
+/transform_listener_impl_560424c71380
+  Subscribers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /tf: tf2_msgs/msg/TFMessage
+    /tf_static: tf2_msgs/msg/TFMessage
+  Publishers:
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /transform_listener_impl_57af96824170 ===
+/transform_listener_impl_57af96824170
+  Subscribers:
+    /clock: rosgraph_msgs/msg/Clock
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /tf: tf2_msgs/msg/TFMessage
+    /tf_static: tf2_msgs/msg/TFMessage
+  Publishers:
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /transform_listener_impl_6154c283d9f0 ===
+/transform_listener_impl_6154c283d9f0
+  Subscribers:
+    /clock: rosgraph_msgs/msg/Clock
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /tf: tf2_msgs/msg/TFMessage
+    /tf_static: tf2_msgs/msg/TFMessage
+  Publishers:
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /ugv_follow_node ===
+/ugv_follow_node
+  Subscribers:
+    /fmu/out/vehicle_odometry: px4_msgs/msg/VehicleOdometry
+    /odom: nav_msgs/msg/Odometry
+    /ugv/follow_enable: std_msgs/msg/Bool
+  Publishers:
+    /cmd_vel: geometry_msgs/msg/Twist
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /ugv/tether_distance: std_msgs/msg/Float32
+  Service Servers:
+    /ugv_follow_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /ugv_follow_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /ugv_follow_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /ugv_follow_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /ugv_follow_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /ugv_follow_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /valve_control_node ===
+/valve_control_node
+  Subscribers:
+    /valve/command: std_msgs/msg/String
+  Publishers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /valve/status: std_msgs/msg/String
+  Service Servers:
+    /valve_control_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /valve_control_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /valve_control_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /valve_control_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /valve_control_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /valve_control_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /velodyne_driver_node ===
+/velodyne_driver_node
+  Subscribers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+  Publishers:
+    /diagnostics: diagnostic_msgs/msg/DiagnosticArray
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /velodyne_packets: velodyne_msgs/msg/VelodyneScan
+  Service Servers:
+    /velodyne_driver_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /velodyne_driver_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /velodyne_driver_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /velodyne_driver_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /velodyne_driver_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /velodyne_driver_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /velodyne_laserscan_node ===
+/velodyne_laserscan_node
+  Subscribers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /velodyne_points: sensor_msgs/msg/PointCloud2
+  Publishers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /scan: sensor_msgs/msg/LaserScan
+  Service Servers:
+    /velodyne_laserscan_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /velodyne_laserscan_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /velodyne_laserscan_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /velodyne_laserscan_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /velodyne_laserscan_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /velodyne_laserscan_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /velodyne_transform_node ===
+/velodyne_transform_node
+  Subscribers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /velodyne_packets: velodyne_msgs/msg/VelodyneScan
+  Publishers:
+    /diagnostics: diagnostic_msgs/msg/DiagnosticArray
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /velodyne_points: sensor_msgs/msg/PointCloud2
+  Service Servers:
+    /velodyne_transform_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /velodyne_transform_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /velodyne_transform_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /velodyne_transform_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /velodyne_transform_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /velodyne_transform_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
