@@ -2,9 +2,10 @@
 # check_network.sh
 
 declare -A DEVICES=(
-    ["Desktop"]="192.168.0.20"
-    ["Mini PC"]="192.168.0.21"
-    ["Raspberry Pi"]="192.168.0.41"
+    ["Router"]="192.168.53.1"
+    ["Desktop"]="192.168.53.5"
+    ["Mini PC"]="192.168.53.4"
+    ["Raspberry Pi"]="192.168.53.2"
 )
 
 echo "==============================="
