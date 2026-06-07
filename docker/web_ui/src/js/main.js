@@ -171,7 +171,7 @@ function scheduleReconnect(delayMs = RECONNECT_DELAY_MS) {
 
 function updateReconnectButton() {
     if (!els.reconnectBtn) return;
-    els.reconnectBtn.textContent = state.ws_connecting ? 'Connecting...' : 'Reconnect';
+    els.reconnectBtn.textContent = 'RECONNECT';
 }
 
 function requestRosbridgeReconnect() {

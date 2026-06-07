@@ -14,8 +14,10 @@ services:
       - CYCLONEDDS_URI=file:///cyclonedds.xml
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID}
     volumes:
-      # ROS2 workspace
-      - ./docker/co_paint/workspace:/workspace
+      # ROS2 workspace (px4_gui_ctrl 소스: control_code/src)
+      # - ./docker/co_paint/workspace:/workspace
+      - ./control_code/src:/workspace/src
+      - ${PX4_MSGS_INSTALL:-/home/samuel/px4_msgs_ws/install}:/px4_msgs_install:ro
 
       # DDS 설정
       - ./middleware/cyclonedds.xml:/cyclonedds.xml:ro
@@ -23,19 +25,14 @@ services:
 
 
   # -----------------------------
-  # HTML GCS (nginx)
+  # HTML GCS (nginx) — GCS 전체 host network (아키텍처 다이어그램 기준)
   # -----------------------------
   web_ui:
     build:
       context: ./docker/web_ui
       dockerfile: Dockerfile
+    network_mode: host
     env_file: .env
-    networks:
-      - app-network
-    ports:
-      - "${WEB_UI_PORT:-80}:80"                   # 외부 접근 포트
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 
