@@ -1,7 +1,7 @@
 # ROS2 빌드 결과물
-docker/co_paint/workspace/build/
-docker/co_paint/workspace/install/
-docker/co_paint/workspace/log/
+build/
+install/
+log/
 
 # UGV control_code ROS2 빌드 결과물
 control_code/build/
