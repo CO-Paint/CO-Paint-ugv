@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CO-PAINT GCS Control</title>
+    <!-- Offline ROS bridge dependencies -->
+    <script src="js/eventemitter2.min.js"></script>
+    <script src="js/roslib.min.js"></script>
+    <link rel="stylesheet" href="css/style.css?v=flight-relay-1">
+</head>
+<body>
+    <div class="overlay-bg"></div>
+    <div class="app-container">
+        <header class="top-nav">
+            <div class="brand">
+                <span class="logo"></span>
+                <h1>CO-PAINT <span>// UGV Control</span></h1>
+            </div>
+            <div class="status-stack" id="status-stack">
+                <div class="connection-status" id="drone-status">
+                    <span class="status-label">Drone</span>
+                    <div class="indicator disconnected" id="drone-indicator"></div>
+                    <span id="drone-text">Disconnected</span>
+                </div>
+                <div class="connection-status" id="ws-status">
+                    <span class="status-label">WebSocket</span>
+                    <div class="indicator disconnected" id="ws-indicator"></div>
+                    <span id="ws-text">Disconnected</span>
+                </div>
+                <button type="button" class="btn reconnect-btn" id="btn-reconnect">Reconnect</button>
+            </div>
+        </header>
+
+        <main class="grid-layout">
+            <!-- Telemetry Panel -->
+            <section class="card glass-panel" id="telemetry-panel">
+                <div class="card-header">
+                    <h2>Live Telemetry - Drone</h2>
+                    <div class="badge" id="arm-badge">DISARMED</div>
+                </div>
+                <div class="data-grid">
+                    <div class="data-item">
+                        <span class="label">X (Meters)</span>
+                        <span class="value font-mono" id="val-x">0.00</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="label">Y (Meters)</span>
+                        <span class="value font-mono" id="val-y">0.00</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="label">Z (Meters)</span>
+                        <span class="value font-mono" id="val-z">0.00</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="label">Yaw (Deg)</span>
+                        <span class="value font-mono" id="val-yaw">0.0</span>
+                    </div>
+                    <div class="data-item telemetry-vector">
+                        <span class="label">Velocity (m/s)</span>
+                        <span class="value font-mono" id="val-speed">--</span>
+                        <span class="detail font-mono" id="val-speed-detail">N -- | E -- | D --</span>
+                    </div>
+                    <div class="data-item telemetry-vector">
+                        <span class="label">Accel (m/s2)</span>
+                        <span class="value font-mono" id="val-accel">--</span>
+                        <span class="detail font-mono" id="val-accel-detail">N -- | E -- | D --</span>
+                    </div>
+                    <div class="data-item battery-item" id="battery-item">
+                        <span class="label">Battery</span>
+                        <div class="battery-readout">
+                            <span class="value font-mono" id="val-battery">--%</span>
+                            <div class="battery-gauge" aria-hidden="true">
+                                <div class="battery-gauge-fill" id="battery-gauge-fill"></div>
+                            </div>
+                        </div>
+                        <span class="detail font-mono" id="val-battery-detail">Waiting for data</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- UGV Telemetry Panel -->
+            <section class="card glass-panel" id="ugv-telemetry-panel">
+                <div class="card-header">
+                    <h2>Live Telemetry - UGV</h2>
+                </div>
+                <div class="data-grid">
+                    <!-- Data will be added here later -->
+                </div>
+            </section>
+
+            <!-- Coordinate Input Panel -->
+            <section class="card glass-panel" id="target-panel">
+                <div class="card-header">
+                    <h2>Target Setup</h2>
+                </div>
+                <form id="target-form" class="target-form">
+                    <div class="input-group">
+                        <label for="in-x">X (North)</label>
+                        <input type="number" step="0.1" id="in-x" value="0.0">
+                    </div>
+                    <div class="input-group">
+                        <label for="in-y">Y (East)</label>
+                        <input type="number" step="0.1" id="in-y" value="0.0">
+                    </div>
+                    <div class="input-group">
+                        <label for="in-z">Z (Down)</label>
+                        <input type="number" step="0.1" id="in-z" value="-2.0">
+                    </div>
+                    <div class="input-group">
+                        <label for="in-yaw">Yaw (Deg)</label>
+                        <input type="number" step="0.1" id="in-yaw" value="0.0">
+                    </div>
+                    <button type="submit" class="btn primary-btn">Submit Coordinates</button>
+                </form>
+
+                <div class="current-target-display">
+                    <h3>Current Target</h3>
+                    <p class="font-mono" id="cur-target">X: 0.0 | Y: 0.0 | Z: -2.0 | Yaw: 0.0°</p>
+                </div>
+            </section>
+
+            <!-- Command Controls Panel -->
+            <section class="card glass-panel" id="controls-panel">
+                <div class="card-header">
+                    <h2>Command Controls</h2>
+                </div>
+                <div class="control-grid">
+                    <button class="btn cmd-btn arm-btn" id="btn-arm">ARM</button>
+                    <button class="btn cmd-btn offboard-btn offboard-inactive" id="btn-offboard">TAKEOFF</button>
+                    <button class="btn cmd-btn disarm-btn" id="btn-disarm">DISARM</button>
+                    <button class="btn cmd-btn land-btn" id="btn-land">LAND</button>
+                </div>
+                <div class="emergency-action">
+                    <button class="btn danger-btn" id="btn-kill">EMERGENCY LAND</button>
+                </div>
+            </section>
+
+            <!-- Keyboard Help Panel -->
+            <section class="card glass-panel" id="help-panel">
+                <div class="card-header">
+                    <h2>Keyboard Teleop</h2>
+                </div>
+                <div class="help-content">
+                    <div class="key-bind"><span>W / S</span> Forward / Backward</div>
+                    <div class="key-bind"><span>A / D</span> Left / Right</div>
+                    <div class="key-bind"><span>UP / DOWN</span> Ascend / Descend</div>
+                    <div class="key-bind"><span>Q / E</span> Rotate Left / Right</div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <div class="toast-message" id="toast-message" role="status" aria-live="polite"></div>
+    <script src="js/main.js?v=flight-relay-1"></script>
+</body>
+</html>

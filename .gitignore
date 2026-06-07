@@ -3,6 +3,11 @@ docker/co_paint/workspace/build/
 docker/co_paint/workspace/install/
 docker/co_paint/workspace/log/
 
+# UGV control_code ROS2 빌드 결과물
+control_code/build/
+control_code/install/
+control_code/log/
+
 # DB 데이터
 docker/postgres/data/
 
@@ -11,5 +16,5 @@ docker/postgres/data/
 
 # 기타
 __pycache__/
-*.pyc
+*.py[cod]
 .DS_Store
