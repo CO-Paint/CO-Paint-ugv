@@ -35,7 +35,7 @@ class DroneControlNode(Node):
         )
 
         # 상태 수신 (Subscribe)
-        self.status_sub = self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status', self.status_callback, qos_profile_sub)
+        self.status_sub = self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status_v1', self.status_callback, qos_profile_sub)
         self.pos_sub = self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.pos_callback, qos_profile_sub)
 
         # PX4 명령은 직접 publish하지 않고 UAV edge flight_control_node로만 전달

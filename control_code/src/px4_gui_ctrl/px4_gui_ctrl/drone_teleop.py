@@ -32,7 +32,7 @@ class DroneMasterController(Node):
 
         # 3. Subscriber 설정
         self.local_pos_sub = self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.pos_callback, telemetry_qos)
-        self.status_sub = self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status', self.status_callback, telemetry_qos)
+        self.status_sub = self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status_v1', self.status_callback, telemetry_qos)
 
         # 4. 상태 변수
         self.curr_x, self.curr_y, self.curr_z, self.curr_yaw = 0.0, 0.0, 0.0, 0.0

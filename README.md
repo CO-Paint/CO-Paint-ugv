@@ -340,7 +340,7 @@ sudo ufw status
 
 `/copaint/px4_net_test`는 px4_msgs DDS 통신 확인용. DB 저장 대상 기본 토픽은 아님
 
-`telemetry_logs`는 PX4 위치/상태 토픽(`/fmu/out/vehicle_local_position`, `/fmu/out/vehicle_status`) 기록용
+`telemetry_logs`는 PX4 위치/상태 토픽(`/fmu/out/vehicle_local_position`, `/fmu/out/vehicle_status_v1`) 기록용
 
 **DB에서 최근 통신 테스트 로그 확인**
 ```bash

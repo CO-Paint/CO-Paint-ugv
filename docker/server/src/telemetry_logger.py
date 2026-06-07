@@ -21,7 +21,7 @@ PX4_LOCAL_POSITION_TOPIC = os.getenv(
 )
 PX4_VEHICLE_STATUS_TOPIC = os.getenv(
     "PX4_VEHICLE_STATUS_TOPIC",
-    "/fmu/out/vehicle_status",
+    "/fmu/out/vehicle_status_v1",
 )
 TOPIC_TEST_TOPIC = os.getenv("TOPIC_TEST_TOPIC", "/copaint/net_test")
 TOPIC_TEST_MESSAGE_TYPE = os.getenv("TOPIC_TEST_MESSAGE_TYPE", "std_msgs/msg/String")

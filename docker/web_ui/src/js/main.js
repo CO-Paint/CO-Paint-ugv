@@ -93,12 +93,6 @@ let posSub = new ROSLIB.Topic({
 
 let statusSub = new ROSLIB.Topic({
     ros: ros,
-    name: '/fmu/out/vehicle_status',
-    messageType: 'px4_msgs/msg/VehicleStatus'
-});
-
-let statusV1Sub = new ROSLIB.Topic({
-    ros: ros,
     name: '/fmu/out/vehicle_status_v1',
     messageType: 'px4_msgs/msg/VehicleStatus'
 });
@@ -245,7 +239,6 @@ function handleStatusMessage(msg) {
 }
 
 statusSub.subscribe(handleStatusMessage);
-statusV1Sub.subscribe(handleStatusMessage);
 
 batterySub.subscribe((msg) => {
     markDroneSeen();
