@@ -2,37 +2,33 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 import threading
+import math
 import tkinter as tk
 from tkinter import messagebox
 
-from std_msgs.msg import String
-from px4_msgs.msg import VehicleLocalPosition, VehicleStatus
+# PX4 메시지 임포트 (v1.16 규격)
+from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition, VehicleStatus
 
 class DroneMasterController(Node):
     def __init__(self):
         super().__init__('drone_master_controller')
 
         # 1. QoS 설정
-        telemetry_qos = QoSProfile(
+        qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
-        command_qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10
-        )
 
         # 2. Publisher 설정
-        self.mission_cmd_pub = self.create_publisher(
-            String, '/flight_control/mission_cmd', command_qos)
+        self.offboard_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
+        self.setpoint_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+        self.command_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
         # 3. Subscriber 설정
-        self.local_pos_sub = self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.pos_callback, telemetry_qos)
-        self.status_sub = self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status_v1', self.status_callback, telemetry_qos)
+        self.local_pos_sub = self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.pos_callback, qos_profile)
+        self.status_sub = self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status', self.status_callback, qos_profile)
 
         # 4. 상태 변수
         self.curr_x, self.curr_y, self.curr_z, self.curr_yaw = 0.0, 0.0, 0.0, 0.0
@@ -44,6 +40,10 @@ class DroneMasterController(Node):
         self.target_yaw = 0.0
         self.step_size = 0.2 
 
+        # 6. 주기적 명령 송신 타이머 (10Hz)
+        self.create_timer(0.1, self.timer_callback)
+        self.stop_offboard_control = False
+
     def pos_callback(self, msg):
         self.curr_x, self.curr_y, self.curr_z = msg.x, msg.y, msg.z
         self.curr_yaw = msg.heading
@@ -52,18 +52,39 @@ class DroneMasterController(Node):
         self.arming_state = msg.arming_state
         self.nav_state = msg.nav_state
         if self.arming_state == 1: 
+            self.stop_offboard_control = False
             self.target_x = 0.0
             self.target_y = 0.0
             self.target_z = -2.0 
             self.target_yaw = 0.0
 
-    def publish_mission_command(self, command):
-        self.mission_cmd_pub.publish(String(data=command))
-        self.get_logger().info(f"Mission command sent to flight_control_node: {command}")
+    def timer_callback(self):
+        if self.nav_state == 4 or self.stop_offboard_control:
+            return
+        self.publish_offboard_mode()
+        self.publish_setpoint()
 
-    def publish_align_command(self):
-        self.publish_mission_command(
-            f"ALIGN_FOR_LAND:{self.target_x},{self.target_y},{self.target_z}")
+    def publish_offboard_mode(self):
+        msg = OffboardControlMode()
+        msg.position, msg.timestamp = True, int(self.get_clock().now().nanoseconds / 1000)
+        self.offboard_pub.publish(msg)
+
+    def publish_setpoint(self):
+        msg = TrajectorySetpoint()
+        msg.position = [float(self.target_x), float(self.target_y), float(self.target_z)]
+        msg.yaw = self.target_yaw * (math.pi / 180.0)
+        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.setpoint_pub.publish(msg)
+
+    def send_command(self, command, p1=0.0, p2=0.0):
+        if command == VehicleCommand.VEHICLE_CMD_NAV_LAND:
+            self.stop_offboard_control = True
+        msg = VehicleCommand()
+        msg.command, msg.param1, msg.param2 = command, p1, p2
+        msg.target_system, msg.target_component = 1, 1
+        msg.source_system, msg.source_component = 1, 1
+        msg.from_external, msg.timestamp = True, int(self.get_clock().now().nanoseconds / 1000)
+        self.command_pub.publish(msg)
 
 class DroneGui:
     def __init__(self, node):
@@ -110,11 +131,11 @@ class DroneGui:
         cmd_frame = tk.LabelFrame(self.root, text="Basic Commands", padx=15, pady=10)
         cmd_frame.pack(pady=5, fill="x", padx=10)
         tk.Button(cmd_frame, text="1. ARM (시동)", command=self.cmd_arm, bg="#FF8C00", fg="white", height=2, width=15).grid(row=0, column=0, padx=5, pady=5)
-        tk.Button(cmd_frame, text="2. TAKEOFF", command=self.cmd_offboard, bg="#4682B4", fg="white", height=2, width=15).grid(row=0, column=1, padx=5, pady=5)
+        tk.Button(cmd_frame, text="2. OFFBOARD", command=self.cmd_offboard, bg="#4682B4", fg="white", height=2, width=15).grid(row=0, column=1, padx=5, pady=5)
         tk.Button(cmd_frame, text="DISARM (정지)", command=self.cmd_disarm, bg="#A9A9A9", height=2, width=15).grid(row=1, column=0, padx=5, pady=5)
         tk.Button(cmd_frame, text="LAND (착륙)", command=self.cmd_land, bg="#8FBC8F", height=2, width=15).grid(row=1, column=1, padx=5, pady=5)
 
-        tk.Button(self.root, text="EMERGENCY LAND", command=self.cmd_emergency, bg="red", fg="white", font=("Arial", 12, "bold"), height=2).pack(pady=10, fill="x", padx=15)
+        tk.Button(self.root, text="EMERGENCY KILL", command=self.cmd_disarm, bg="red", fg="white", font=("Arial", 12, "bold"), height=2).pack(pady=10, fill="x", padx=15)
 
         # [5] 키보드 조종 가이드 & 바인딩
         tk.Label(self.root, text="[ Keyboard ]\nW/S: 전/후 | A/D: 좌/우\nUp/Down: 상/하 | Q/E: 회전", justify="center", fg="gray").pack(pady=5)
@@ -137,16 +158,14 @@ class DroneGui:
             self.node.target_z = float(self.entries["Z (Down):"].get())
             self.node.target_yaw = float(self.entries["Yaw (Deg):"].get())
             self.update_ui_labels()
-            self.node.publish_align_command()
             print(f"Moving to: X={self.node.target_x}, Y={self.node.target_y}, Z={self.node.target_z}")
         except ValueError:
             messagebox.showerror("Input Error", "Please enter valid numbers.")
 
-    def cmd_arm(self): self.node.publish_mission_command('ARM')
-    def cmd_disarm(self): self.node.publish_mission_command('DISARM')
-    def cmd_offboard(self): self.node.publish_mission_command('TAKEOFF')
-    def cmd_land(self): self.node.publish_mission_command('START_AUTO_LAND')
-    def cmd_emergency(self): self.node.publish_mission_command('EMERGENCY')
+    def cmd_arm(self): self.node.send_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+    def cmd_disarm(self): self.node.send_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
+    def cmd_offboard(self): self.node.send_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
+    def cmd_land(self): self.node.send_command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
 
     def update_target(self, dx=0.0, dy=0.0, dz=0.0, dyaw=0.0):
         self.node.target_x += dx
@@ -154,7 +173,6 @@ class DroneGui:
         self.node.target_z += dz
         self.node.target_yaw += dyaw
         self.update_ui_labels()
-        self.node.publish_align_command()
 
     def update_ui_labels(self):
         self.lbl_target.config(text=f"Target -> X: {self.node.target_x:.1f} | Y: {self.node.target_y:.1f} | Z: {self.node.target_z:.1f}")

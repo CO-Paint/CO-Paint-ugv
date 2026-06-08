@@ -74,6 +74,32 @@
   Action Clients:
 
 
+=== Node: /bbox_detection_node ===
+/bbox_detection_node
+  Subscribers:
+    /camera/rgb/image_raw: sensor_msgs/msg/Image
+    /vision/segmentation: sensor_msgs/msg/Image
+  Publishers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /vision/bbox_debug: sensor_msgs/msg/Image
+    /vision/bboxes_2d: vision_msgs/msg/Detection2DArray
+    /vision/exclusion_zones: std_msgs/msg/String
+    /vision/target_error: geometry_msgs/msg/Point
+  Service Servers:
+    /bbox_detection_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /bbox_detection_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /bbox_detection_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /bbox_detection_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /bbox_detection_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /bbox_detection_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
 === Node: /container ===
 /container
   Subscribers:
@@ -83,6 +109,31 @@
     /rosout: rcl_interfaces/msg/Log
   Service Servers:
 
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /facade_area_node ===
+/facade_area_node
+  Subscribers:
+    /painting/send_area: std_msgs/msg/String
+    /vision/bboxes_2d: vision_msgs/msg/Detection2DArray
+  Publishers:
+    /painting/area_debug: std_msgs/msg/String
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /planner/paint_zone: std_msgs/msg/String
+    /rosout: rcl_interfaces/msg/Log
+    /ui/paint_zone: std_msgs/msg/String
+  Service Servers:
+    /facade_area_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /facade_area_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /facade_area_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /facade_area_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /facade_area_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /facade_area_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
   Service Clients:
 
   Action Servers:
@@ -202,20 +253,20 @@
   Action Clients:
 
 
-=== Node: /launch_ros_2254324 ===
-/launch_ros_2254324
+=== Node: /launch_ros_11134 ===
+/launch_ros_11134
   Subscribers:
 
   Publishers:
     /parameter_events: rcl_interfaces/msg/ParameterEvent
     /rosout: rcl_interfaces/msg/Log
   Service Servers:
-    /launch_ros_2254324/describe_parameters: rcl_interfaces/srv/DescribeParameters
-    /launch_ros_2254324/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
-    /launch_ros_2254324/get_parameters: rcl_interfaces/srv/GetParameters
-    /launch_ros_2254324/list_parameters: rcl_interfaces/srv/ListParameters
-    /launch_ros_2254324/set_parameters: rcl_interfaces/srv/SetParameters
-    /launch_ros_2254324/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+    /launch_ros_11134/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /launch_ros_11134/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /launch_ros_11134/get_parameters: rcl_interfaces/srv/GetParameters
+    /launch_ros_11134/list_parameters: rcl_interfaces/srv/ListParameters
+    /launch_ros_11134/set_parameters: rcl_interfaces/srv/SetParameters
+    /launch_ros_11134/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
   Service Clients:
 
   Action Servers:
@@ -388,6 +439,8 @@
   Publishers:
     /client_count: std_msgs/msg/Int32
     /connected_clients: rosbridge_msgs/msg/ConnectedClients
+    /fmu/in/offboard_control_mode: px4_msgs/msg/OffboardControlMode
+    /fmu/in/trajectory_setpoint: px4_msgs/msg/TrajectorySetpoint
     /parameter_events: rcl_interfaces/msg/ParameterEvent
     /rosout: rcl_interfaces/msg/Log
   Service Servers:
@@ -397,6 +450,27 @@
     /rosbridge_websocket/list_parameters: rcl_interfaces/srv/ListParameters
     /rosbridge_websocket/set_parameters: rcl_interfaces/srv/SetParameters
     /rosbridge_websocket/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /rqt_gui_py_node_76616 ===
+/rqt_gui_py_node_76616
+  Subscribers:
+
+  Publishers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+    /rqt_gui_py_node_76616/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /rqt_gui_py_node_76616/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /rqt_gui_py_node_76616/get_parameters: rcl_interfaces/srv/GetParameters
+    /rqt_gui_py_node_76616/list_parameters: rcl_interfaces/srv/ListParameters
+    /rqt_gui_py_node_76616/set_parameters: rcl_interfaces/srv/SetParameters
+    /rqt_gui_py_node_76616/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
   Service Clients:
 
   Action Servers:
@@ -488,25 +562,8 @@
   Action Clients:
 
 
-=== Node: /transform_listener_impl_55c0738f0e20 ===
-/transform_listener_impl_55c0738f0e20
-  Subscribers:
-    /parameter_events: rcl_interfaces/msg/ParameterEvent
-    /tf: tf2_msgs/msg/TFMessage
-    /tf_static: tf2_msgs/msg/TFMessage
-  Publishers:
-    /rosout: rcl_interfaces/msg/Log
-  Service Servers:
-
-  Service Clients:
-
-  Action Servers:
-
-  Action Clients:
-
-
-=== Node: /transform_listener_impl_5c6fb0ef1190 ===
-/transform_listener_impl_5c6fb0ef1190
+=== Node: /transform_listener_impl_55851abfd290 ===
+/transform_listener_impl_55851abfd290
   Subscribers:
     /clock: rosgraph_msgs/msg/Clock
     /parameter_events: rcl_interfaces/msg/ParameterEvent
@@ -523,8 +580,25 @@
   Action Clients:
 
 
-=== Node: /transform_listener_impl_5f29899f00f0 ===
-/transform_listener_impl_5f29899f00f0
+=== Node: /transform_listener_impl_55ea30492460 ===
+/transform_listener_impl_55ea30492460
+  Subscribers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /tf: tf2_msgs/msg/TFMessage
+    /tf_static: tf2_msgs/msg/TFMessage
+  Publishers:
+    /rosout: rcl_interfaces/msg/Log
+  Service Servers:
+
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /transform_listener_impl_633571677960 ===
+/transform_listener_impl_633571677960
   Subscribers:
     /clock: rosgraph_msgs/msg/Clock
     /parameter_events: rcl_interfaces/msg/ParameterEvent
@@ -651,6 +725,30 @@
     /velodyne_transform_node/list_parameters: rcl_interfaces/srv/ListParameters
     /velodyne_transform_node/set_parameters: rcl_interfaces/srv/SetParameters
     /velodyne_transform_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
+  Service Clients:
+
+  Action Servers:
+
+  Action Clients:
+
+
+=== Node: /vision_node ===
+/vision_node
+  Subscribers:
+    /camera/camera/color/image_raw: sensor_msgs/msg/Image
+  Publishers:
+    /parameter_events: rcl_interfaces/msg/ParameterEvent
+    /rosout: rcl_interfaces/msg/Log
+    /vision/inference_time: std_msgs/msg/Float32
+    /vision/segmentation: sensor_msgs/msg/Image
+    /vision/segmentation_colored: sensor_msgs/msg/Image
+  Service Servers:
+    /vision_node/describe_parameters: rcl_interfaces/srv/DescribeParameters
+    /vision_node/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
+    /vision_node/get_parameters: rcl_interfaces/srv/GetParameters
+    /vision_node/list_parameters: rcl_interfaces/srv/ListParameters
+    /vision_node/set_parameters: rcl_interfaces/srv/SetParameters
+    /vision_node/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
   Service Clients:
 
   Action Servers:
