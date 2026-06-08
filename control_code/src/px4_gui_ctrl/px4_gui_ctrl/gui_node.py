@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QFont
 
-from std_msgs.msg import String
+from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand
 from px4_msgs.msg import VehicleStatus, VehicleLocalPosition
 
 class DroneControlNode(Node):
@@ -26,21 +26,22 @@ class DroneControlNode(Node):
             depth=1
         )
 
-        # flight_control_node로 전달할 고수준 명령 QoS
-        command_qos = QoSProfile(
+        # 2. 오프보드 및 제어 명령 송신용 (Reliable + Transient Local) -> 여기가 핵심!
+        qos_profile_pub = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
-            depth=10
+            depth=1
         )
 
         # 상태 수신 (Subscribe)
-        self.status_sub = self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status_v1', self.status_callback, qos_profile_sub)
+        self.status_sub = self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status', self.status_callback, qos_profile_sub)
         self.pos_sub = self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.pos_callback, qos_profile_sub)
 
-        # PX4 명령은 직접 publish하지 않고 UAV edge flight_control_node로만 전달
-        self.mission_cmd_pub = self.create_publisher(
-            String, '/flight_control/mission_cmd', command_qos)
+        # 명령 송신 (Publish) - 깐깐해진 규격에 맞춘 퍼블리셔
+        self.offboard_mode_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile_pub)
+        self.trajectory_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile_pub)
+        self.command_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile_pub)
         # 드론 상태 변수
         self.px4_timestamp = 0
         self.is_armed = False
@@ -51,6 +52,9 @@ class DroneControlNode(Node):
         # 목표 좌표 변수 (초기값: 5m 상공, 앞(0도)을 바라봄)
         self.target_x, self.target_y, self.target_z = 0.0, 0.0, -5.0
         self.target_yaw = 0.0 
+
+        # Offboard 유지를 위한 10Hz 타이머
+        self.timer = self.create_timer(0.1, self.timer_callback)
 
     def status_callback(self, msg):
         self.px4_timestamp = msg.timestamp
@@ -65,9 +69,46 @@ class DroneControlNode(Node):
         # 👇 추가된 핵심 코드: 1초에 50번씩 들어오는 위치 데이터에서 가장 최신 PX4 가상 시간을 빼옵니다.
         self.px4_timestamp = msg.timestamp
 
-    def send_mission_command(self, command):
-        self.mission_cmd_pub.publish(String(data=command))
-        self.get_logger().info(f"Mission command sent to flight_control_node: {command}")
+    def timer_callback(self):
+        if self.px4_timestamp == 0:
+            return
+        # 오프보드 모드 유지를 위해 목표 좌표를 끊임없이 쏨
+        self.publish_offboard_control_mode()
+        self.publish_trajectory_setpoint()
+
+    def publish_offboard_control_mode(self):
+        msg = OffboardControlMode()
+        msg.position = True
+        msg.velocity = False
+        msg.acceleration = False
+        msg.attitude = False
+        msg.body_rate = False
+        msg.timestamp = self.px4_timestamp
+        self.offboard_mode_pub.publish(msg)
+
+    def publish_trajectory_setpoint(self):
+        msg = TrajectorySetpoint()
+        msg.position = [self.target_x, self.target_y, self.target_z]
+        msg.yaw = self.target_yaw
+        msg.velocity = [float('nan'), float('nan'), float('nan')]
+        msg.acceleration = [float('nan'), float('nan'), float('nan')]
+        msg.jerk = [float('nan'), float('nan'), float('nan')]
+        msg.yawspeed = float('nan')
+        msg.timestamp = self.px4_timestamp
+        self.trajectory_pub.publish(msg)
+
+    def send_command(self, command, param1=0.0, param2=0.0):
+        msg = VehicleCommand()
+        msg.command = command
+        msg.param1 = float(param1)
+        msg.param2 = float(param2)
+        msg.target_system = 1
+        msg.target_component = 1
+        msg.source_system = 255
+        msg.source_component = 191
+        msg.from_external = True
+        msg.timestamp = self.px4_timestamp
+        self.command_pub.publish(msg)
 
 
 class DroneGUI(QWidget):
@@ -105,14 +146,14 @@ class DroneGUI(QWidget):
         
         btn_arm = QPushButton("시동 (Arm)")
         btn_arm.setStyleSheet("background-color: #ffcccc;")
-        btn_arm.clicked.connect(lambda: self.node.send_mission_command('ARM'))
+        btn_arm.clicked.connect(lambda: self.node.send_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0))
         
         btn_disarm = QPushButton("시동 끄기 (Disarm)")
-        btn_disarm.clicked.connect(lambda: self.node.send_mission_command('DISARM'))
+        btn_disarm.clicked.connect(lambda: self.node.send_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0))
         
-        btn_offboard = QPushButton("이륙 시작 (Takeoff)")
+        btn_offboard = QPushButton("오프보드 비행 시작")
         btn_offboard.setStyleSheet("background-color: #ccffcc;")
-        btn_offboard.clicked.connect(lambda: self.node.send_mission_command('TAKEOFF'))
+        btn_offboard.clicked.connect(lambda: self.node.send_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0))
 
         ctrl_layout.addWidget(btn_arm)
         ctrl_layout.addWidget(btn_disarm)
@@ -156,10 +197,8 @@ class DroneGUI(QWidget):
             # 사람이 입력한 각도(Degree)를 드론이 알아듣는 라디안(Radian)으로 변환
             yaw_deg = float(self.input_yaw.text())
             self.node.target_yaw = math.radians(yaw_deg)
-            self.node.send_mission_command(
-                f"ALIGN_FOR_LAND:{self.node.target_x},{self.node.target_y},{self.node.target_z}")
             
-            self.node.get_logger().info(f"좌표 명령 전달: X={self.node.target_x}, Y={self.node.target_y}, Z={self.node.target_z}, Yaw={yaw_deg}°")
+            self.node.get_logger().info(f"좌표 업데이트: X={self.node.target_x}, Y={self.node.target_y}, Z={self.node.target_z}, Yaw={yaw_deg}°")
         except ValueError:
             self.node.get_logger().error("숫자만 입력해주세요!")
 

@@ -1,39 +1,22 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from std_msgs.msg import String
-from px4_msgs.msg import VehicleOdometry
+from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleOdometry
 import math
-import json
-
 
 class AutoPainterNode(Node):
     def __init__(self):
         super().__init__('auto_painter_node')
 
-        command_qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10,
-        )
-        trajectory_qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10,
-        )
-
-        # PX4 setpoint는 직접 publish하지 않고 flight_control_node 입력만 publish
-        self.paint_waypoints_pub = self.create_publisher(
-            String, '/flight_control/paint_waypoints', trajectory_qos)
-        self.mission_cmd_pub = self.create_publisher(
-            String, '/flight_control/mission_cmd', command_qos)
-        self.create_subscription(
-            String, '/auto_painter/command', self.command_callback, command_qos)
+        # 퍼블리셔 (명령 하달)
+        self.offboard_mode_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', 10)
+        self.trajectory_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', 10)
+        self.command_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', 10)
 
         # 서브스크라이버 (현재 위치 파악)
         self.odom_sub = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.odom_callback, 10)
+
+        # 10Hz 타이머 (오프보드 하트비트)
+        self.timer = self.create_timer(0.1, self.timer_callback)
 
         # 현재 드론 위치
         self.current_pos = [0.0, 0.0, 0.0]
@@ -49,8 +32,6 @@ class AutoPainterNode(Node):
         )
         self.current_wp_index = 0
         self.is_painting = False
-        self.waypoints_published = False
-        self.create_timer(1.0, self.publish_waypoints_once)
 
         self.get_logger().info("🎨 자동 도색 궤적 준비 완료! 이륙 명령을 대기합니다.")
 
@@ -78,33 +59,6 @@ class AutoPainterNode(Node):
         waypoints.append([0.0, 0.0, -1.0]) 
         return waypoints
 
-    def publish_waypoints_once(self):
-        if self.waypoints_published:
-            return
-        payload = [
-            {'x': float(x), 'y': float(y), 'z': float(z), 'paint_on': True}
-            for x, y, z in self.waypoints
-        ]
-        self.paint_waypoints_pub.publish(String(data=json.dumps(payload)))
-        self.waypoints_published = True
-        self.get_logger().info(
-            f"도색 waypoint {len(payload)}개를 flight_control_node로 전달했습니다.")
-
-    def command_callback(self, msg):
-        command = msg.data.strip().upper()
-        if command in ('START', 'PAINT'):
-            self.publish_waypoints_once()
-            self.is_painting = True
-            self.current_wp_index = 0
-            self.mission_cmd_pub.publish(String(data='PAINT'))
-            self.get_logger().info("PAINT 명령을 flight_control_node로 전달했습니다.")
-        elif command == 'STOP':
-            self.is_painting = False
-            self.mission_cmd_pub.publish(String(data='START_AUTO_LAND'))
-            self.get_logger().info("START_AUTO_LAND 명령을 flight_control_node로 전달했습니다.")
-        else:
-            self.get_logger().warn(f"Unknown auto_painter command ignored: {command}")
-
     def odom_callback(self, msg):
         """ 드론의 현재 위치를 지속적으로 업데이트 """
         self.current_pos = [msg.position[0], msg.position[1], msg.position[2]]
@@ -129,18 +83,31 @@ class AutoPainterNode(Node):
                     self.get_logger().info("🎉 도색 작업이 모두 완료되었습니다!")
                     self.is_painting = False
 
-def main(args=None):
-    rclpy.init(args=args)
-    node = AutoPainterNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    def timer_callback(self):
+        """ 10Hz로 목표 좌표 쏴주기 """
+        # 오프보드 모드 하트비트
+        msg = OffboardControlMode()
+        msg.position = True
+        msg.velocity = False
+        msg.acceleration = False
+        msg.attitude = False
+        msg.body_rate = False
+        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.offboard_mode_pub.publish(msg)
 
+        # 도색 중이라면 궤적을 쏘고, 아니면 기본 이륙 위치 유지
+        setpoint = TrajectorySetpoint()
+        if self.is_painting and self.current_wp_index < len(self.waypoints):
+            target = self.waypoints[self.current_wp_index]
+            setpoint.position = [float(target[0]), float(target[1]), float(target[2])]
+            # 드론의 머리(Yaw)는 항상 벽(X축 양의 방향, 0.0 라디안)을 바라보게 고정!
+            setpoint.yaw = 0.0 
+        else:
+            # 대기 상태 (고도 1m)
+            setpoint.position = [0.0, 0.0, -1.0]
+            setpoint.yaw = 0.0
 
-if __name__ == '__main__':
-    main()
+        setpoint.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.trajectory_pub.publish(setpoint)
+
+    # (이륙, 오프보드 전환 등의 VehicleCommand 함수는 기존 GUI 노드와 동일하여 생략)

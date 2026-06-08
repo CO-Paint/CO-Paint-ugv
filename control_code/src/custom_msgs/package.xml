@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>custom_msgs</name>
+  <version>0.0.1</version>
+  <description>CO-PAINT custom messages and services</description>
+  <maintainer email="khg950520@gmail.com">hk</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rosidl_default_generators</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

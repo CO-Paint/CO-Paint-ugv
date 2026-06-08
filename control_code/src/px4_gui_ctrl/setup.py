@@ -28,7 +28,10 @@ setup(
             'auto_painter_node = px4_gui_ctrl.auto_painter:main',
             'manual_controller_node = px4_gui_ctrl.manual_controller:main',
             'drone_teleop_node = px4_gui_ctrl.drone_teleop:main',
-            'web_command_relay = px4_gui_ctrl.web_command_relay:main',
+            'master_node             = px4_gui_ctrl.master_node:main',
+            'flight_control_node     = px4_gui_ctrl.flight_control_node:main',
+            'path_planner_node       = px4_gui_ctrl.path_planner_node:main',
+            'path_planner_node_v2    = px4_gui_ctrl.path_planner_node_v2:main',
         ],
     },
 )
