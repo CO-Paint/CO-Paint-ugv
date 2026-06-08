@@ -5,8 +5,8 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
-# PX4 메시지 임포트
-from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleLocalPosition
+from std_msgs.msg import String
+from px4_msgs.msg import VehicleLocalPosition
 import tkinter as tk
 from tkinter import messagebox
 
@@ -15,24 +15,29 @@ class PX4GuiControl(Node):
         super().__init__('px4_gui_control')
 
         # 1. QoS 설정
-        qos_profile = QoSProfile(
+        telemetry_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
+        command_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10
+        )
 
         # 2. Publisher & Subscriber 설정
-        self.offboard_control_mode_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
-        self.trajectory_setpoint_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-        self.vehicle_command_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+        self.mission_cmd_pub = self.create_publisher(
+            String, '/flight_control/mission_cmd', command_qos)
         
         # 현재 위치 및 방향 구독
         self.vehicle_local_position_sub = self.create_subscription(
             VehicleLocalPosition,
             '/fmu/out/vehicle_local_position',
             self.vehicle_local_position_callback,
-            qos_profile
+            telemetry_qos
         )
 
         # 3. 상태 변수 (현재 위치/방향)
@@ -42,9 +47,6 @@ class PX4GuiControl(Node):
         self.target_x, self.target_y, self.target_z = 0.0, 0.0, 0.0
         self.target_yaw = 0.0 # Degree 단위로 입력받아 Radian으로 변환 예정
 
-        # 5. 주기적 Heartbeat 송신 (10Hz)
-        self.timer = self.create_timer(0.1, self.timer_callback)
-
     def vehicle_local_position_callback(self, msg):
         """ 드론으로부터 실시간 위치 데이터를 받는 콜백 """
         self.curr_x = msg.x
@@ -53,42 +55,21 @@ class PX4GuiControl(Node):
         # PX4의 heading은 Radian이며, NED 기준이므로 시각화를 위해 가공 가능
         self.curr_yaw = msg.heading 
 
-    def timer_callback(self):
-        self.publish_offboard_control_mode()
-        self.publish_trajectory_setpoint()
-
     def arm(self):
-        self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+        self.publish_mission_command('ARM')
     
     def disarm(self):
-        self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
+        self.publish_mission_command('DISARM')
 
     def set_offboard(self):
-        self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
+        self.publish_mission_command('TAKEOFF')
 
-    def publish_offboard_control_mode(self):
-        msg = OffboardControlMode()
-        msg.position, msg.velocity, msg.acceleration = True, False, False
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.offboard_control_mode_pub.publish(msg)
+    def emergency_land(self):
+        self.publish_mission_command('EMERGENCY')
 
-    def publish_trajectory_setpoint(self):
-        msg = TrajectorySetpoint()
-        msg.position = [float(self.target_x), float(self.target_y), float(self.target_z)]
-        # 입력받은 Degree를 Radian으로 변환하여 송신
-        msg.yaw = self.target_yaw * (math.pi / 180.0)
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.trajectory_setpoint_pub.publish(msg)
-
-    def publish_vehicle_command(self, command, param1=0.0, param2=0.0):
-        msg = VehicleCommand()
-        msg.param1, msg.param2 = param1, param2
-        msg.command = command
-        msg.target_system, msg.target_component = 1, 1
-        msg.source_system, msg.source_component = 1, 1
-        msg.from_external = True
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.vehicle_command_pub.publish(msg)
+    def publish_mission_command(self, command):
+        self.mission_cmd_pub.publish(String(data=command))
+        self.get_logger().info(f"Mission command sent to flight_control_node: {command}")
 
 # --- GUI 클래스 ---
 class DroneApp:
@@ -111,8 +92,8 @@ class DroneApp:
         btn_frame = tk.Frame(self.root)
         btn_frame.pack(pady=10)
         tk.Button(btn_frame, text="ARM", command=self.node.arm, bg="orange", width=10).grid(row=0, column=0, padx=5)
-        tk.Button(btn_frame, text="OFFBOARD", command=self.node.set_offboard, bg="lightblue", width=10).grid(row=0, column=1, padx=5)
-        tk.Button(self.root, text="EMERGENCY DISARM", command=self.node.disarm, bg="red", fg="white", width=25).pack(pady=5)
+        tk.Button(btn_frame, text="TAKEOFF", command=self.node.set_offboard, bg="lightblue", width=10).grid(row=0, column=1, padx=5)
+        tk.Button(self.root, text="EMERGENCY LAND", command=self.node.emergency_land, bg="red", fg="white", width=25).pack(pady=5)
 
         # 좌표 및 방향 입력
         input_frame = tk.LabelFrame(self.root, text="Target Setpoints", padx=10, pady=10)
@@ -141,6 +122,8 @@ class DroneApp:
             self.node.target_y = float(self.ent_y.get())
             self.node.target_z = float(self.ent_z.get())
             self.node.target_yaw = float(self.ent_yaw.get())
+            self.node.publish_mission_command(
+                f"ALIGN_FOR_LAND:{self.node.target_x},{self.node.target_y},{self.node.target_z}")
         except ValueError:
             messagebox.showerror("Error", "숫자만 입력해주세요.")
 
