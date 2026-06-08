@@ -32,6 +32,7 @@ setup(
             'flight_control_node     = px4_gui_ctrl.flight_control_node:main',
             'path_planner_node       = px4_gui_ctrl.path_planner_node:main',
             'path_planner_node_v2    = px4_gui_ctrl.path_planner_node_v2:main',
+            'web_command_relay = px4_gui_ctrl.web_command_relay:main',
         ],
     },
 )

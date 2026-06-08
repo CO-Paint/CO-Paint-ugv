@@ -1,13 +1,14 @@
-import os
 import json
+import os
 from typing import Any, Dict, Optional
 
+import asyncpg
 from fastapi import FastAPI, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-import asyncpg
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="UGV Telemetry API")
+
+app = FastAPI(title="CO-Paint UGV Server")
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,10 +24,25 @@ POSTGRES_DB = os.getenv("POSTGRES_DB")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
 
-COMMAND_LOG_SCHEMA_SQL = """
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS telemetry_logs (
+    id BIGSERIAL PRIMARY KEY,
+    timestamp BIGINT NOT NULL,
+    x DOUBLE PRECISION,
+    y DOUBLE PRECISION,
+    z DOUBLE PRECISION,
+    yaw DOUBLE PRECISION,
+    arming_state SMALLINT,
+    nav_state SMALLINT,
+    created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')
+);
+
+CREATE INDEX IF NOT EXISTS idx_telemetry_logs_id_desc
+    ON telemetry_logs (id DESC);
+
 CREATE TABLE IF NOT EXISTS missions (
     mission_id BIGSERIAL PRIMARY KEY,
-    mission_name VARCHAR(200) NOT NULL,
+    mission_name VARCHAR(200) NOT NULL DEFAULT 'default',
     started_at TIMESTAMP,
     ended_at TIMESTAMP,
     mission_status VARCHAR(50),
@@ -65,39 +81,8 @@ CREATE TABLE IF NOT EXISTS web_ui_drone_command_logs (
     created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')
 );
 
-ALTER TABLE missions
-    ALTER COLUMN created_at SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul');
-
-ALTER TABLE web_ui_drone_command_logs
-    ALTER COLUMN command_time SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul'),
-    ALTER COLUMN created_at SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul');
-
-ALTER TABLE web_ui_drone_command_logs
-    ADD COLUMN IF NOT EXISTS input_event VARCHAR(100),
-    ADD COLUMN IF NOT EXISTS current_x DOUBLE PRECISION,
-    ADD COLUMN IF NOT EXISTS current_y DOUBLE PRECISION,
-    ADD COLUMN IF NOT EXISTS current_z DOUBLE PRECISION,
-    ADD COLUMN IF NOT EXISTS current_yaw DOUBLE PRECISION,
-    ADD COLUMN IF NOT EXISTS arming_state SMALLINT,
-    ADD COLUMN IF NOT EXISTS nav_state SMALLINT,
-    ADD COLUMN IF NOT EXISTS ws_connected BOOLEAN DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS drone_connected BOOLEAN DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS rosbridge_url VARCHAR(255),
-    ADD COLUMN IF NOT EXISTS key_name VARCHAR(50),
-    ADD COLUMN IF NOT EXISTS command_code INTEGER,
-    ADD COLUMN IF NOT EXISTS param1 DOUBLE PRECISION,
-    ADD COLUMN IF NOT EXISTS param2 DOUBLE PRECISION,
-    ADD COLUMN IF NOT EXISTS client_timestamp BIGINT,
-    ADD COLUMN IF NOT EXISTS details JSONB DEFAULT '{}'::jsonb;
-
 CREATE INDEX IF NOT EXISTS idx_web_ui_drone_command_logs_command_time
     ON web_ui_drone_command_logs (command_time DESC);
-
-CREATE INDEX IF NOT EXISTS idx_web_ui_drone_command_logs_event_time
-    ON web_ui_drone_command_logs (input_event, command_time DESC);
-
-CREATE INDEX IF NOT EXISTS idx_web_ui_drone_command_logs_result_time
-    ON web_ui_drone_command_logs (command_result, command_time DESC);
 
 CREATE TABLE IF NOT EXISTS topic_communication_test_logs (
     topic_test_log_id BIGSERIAL PRIMARY KEY,
@@ -114,9 +99,6 @@ CREATE TABLE IF NOT EXISTS topic_communication_test_logs (
 
 CREATE INDEX IF NOT EXISTS idx_topic_communication_test_logs_received_at
     ON topic_communication_test_logs (received_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_topic_communication_test_logs_topic_time
-    ON topic_communication_test_logs (topic_name, received_at DESC);
 
 CREATE TABLE IF NOT EXISTS px4_vehicle_status_logs (
     px4_vehicle_status_log_id BIGSERIAL PRIMARY KEY,
@@ -138,9 +120,6 @@ CREATE TABLE IF NOT EXISTS px4_vehicle_status_logs (
 
 CREATE INDEX IF NOT EXISTS idx_px4_vehicle_status_logs_received_at
     ON px4_vehicle_status_logs (received_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_px4_vehicle_status_logs_topic_time
-    ON px4_vehicle_status_logs (topic_name, received_at DESC);
 """
 
 
@@ -171,17 +150,6 @@ class CommandLogRequest(BaseModel):
     details: Dict[str, Any] = Field(default_factory=dict)
 
 
-def normalize_command_log_row(row):
-    data = dict(row)
-    details = data.get("details")
-    if isinstance(details, str):
-        try:
-            data["details"] = json.loads(details)
-        except json.JSONDecodeError:
-            pass
-    return data
-
-
 def normalize_json_row(row, *json_fields):
     data = dict(row)
     for field in json_fields:
@@ -201,27 +169,41 @@ async def startup_db_client():
         password=POSTGRES_PASSWORD,
         database=POSTGRES_DB,
         host=POSTGRES_HOST,
-        port=POSTGRES_PORT
+        port=POSTGRES_PORT,
     )
     async with app.state.db_pool.acquire() as conn:
-        await conn.execute(COMMAND_LOG_SCHEMA_SQL)
+        await conn.execute(SCHEMA_SQL)
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
     await app.state.db_pool.close()
 
+
+@app.get("/api/health")
+async def health_check():
+    async with app.state.db_pool.acquire() as conn:
+        await conn.fetchval("SELECT 1")
+    return {"status": "healthy"}
+
+
 @app.get("/api/telemetry")
 async def get_telemetry(limit: int = Query(default=100, ge=1, le=1000)):
     async with app.state.db_pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id, timestamp, x, y, z, yaw, arming_state, nav_state FROM telemetry_logs ORDER BY id DESC LIMIT $1",
-            limit
+            """
+            SELECT id, timestamp, x, y, z, yaw, arming_state, nav_state, created_at
+            FROM telemetry_logs
+            ORDER BY id DESC
+            LIMIT $1
+            """,
+            limit,
         )
     return [dict(row) for row in rows]
 
+
 @app.post("/api/command-logs", status_code=status.HTTP_201_CREATED)
 async def create_command_log(log: CommandLogRequest):
-    details_json = json.dumps(log.details)
     async with app.state.db_pool.acquire() as conn:
         row = await conn.fetchrow(
             """
@@ -266,9 +248,10 @@ async def create_command_log(log: CommandLogRequest):
             log.param2,
             log.command_result,
             log.client_timestamp,
-            details_json,
+            json.dumps(log.details),
         )
     return dict(row)
+
 
 @app.get("/api/command-logs")
 async def get_command_logs(limit: int = Query(default=100, ge=1, le=1000)):
@@ -286,9 +269,10 @@ async def get_command_logs(limit: int = Query(default=100, ge=1, le=1000)):
             ORDER BY command_log_id DESC
             LIMIT $1
             """,
-            limit
+            limit,
         )
-    return [normalize_command_log_row(row) for row in rows]
+    return [normalize_json_row(row, "details") for row in rows]
+
 
 @app.get("/api/topic-test-logs")
 async def get_topic_test_logs(limit: int = Query(default=100, ge=1, le=1000)):
@@ -303,9 +287,10 @@ async def get_topic_test_logs(limit: int = Query(default=100, ge=1, le=1000)):
             ORDER BY topic_test_log_id DESC
             LIMIT $1
             """,
-            limit
+            limit,
         )
     return [normalize_json_row(row, "raw_message") for row in rows]
+
 
 @app.get("/api/px4-vehicle-status-logs")
 async def get_px4_vehicle_status_logs(limit: int = Query(default=100, ge=1, le=1000)):
@@ -321,10 +306,6 @@ async def get_px4_vehicle_status_logs(limit: int = Query(default=100, ge=1, le=1
             ORDER BY px4_vehicle_status_log_id DESC
             LIMIT $1
             """,
-            limit
+            limit,
         )
     return [normalize_json_row(row, "raw_message") for row in rows]
-
-@app.get("/api/health")
-async def health_check():
-    return {"status": "healthy"}

@@ -3,17 +3,22 @@
     <General>
       <AllowMulticast>false</AllowMulticast>
       <NetworkInterfaceAddress>192.168.53.5</NetworkInterfaceAddress>
+
     </General>
 
     <Discovery>
-      <ParticipantIndex>auto</ParticipantIndex>
-      <MaxAutoParticipantIndex>50</MaxAutoParticipantIndex>
       <Peers>
-        <!-- ROS 2 nodes only. Pixhawk and LiDARs are reached through their drivers. -->
-        <Peer address="192.168.53.5"/>  <!-- Desktop PC / GCS -->
-        <Peer address="192.168.53.6"/>  <!-- Mini PC / UGV SLAM -->
-        <Peer address="192.168.53.2"/>  <!-- UAV edge / Raspberry Pi role -->
+        <!-- ROS2 노드가 실행되는 장비만 등록 -->
+        <Peer address="192.168.53.4"/>  <!-- Mini PC -->
+        <Peer address="192.168.53.5"/>  <!-- Desktop (GCS) -->
+        <Peer address="192.168.53.2"/>  <!-- Raspberry Pi (UAV) -->
       </Peers>
     </Discovery>
+
+    <!-- <Internal>
+      <Watermarks>
+        <WhcHigh>500kB</WhcHigh>
+      </Watermarks>
+    </Internal> -->
   </Domain>
 </CycloneDDS>

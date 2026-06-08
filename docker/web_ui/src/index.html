@@ -7,7 +7,7 @@
     <!-- Offline ROS bridge dependencies -->
     <script src="js/eventemitter2.min.js"></script>
     <script src="js/roslib.min.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=telemetry-motion-1">
+    <link rel="stylesheet" href="css/styles.css?v=flight-relay-2">
 </head>
 <body>
     <div class="overlay-bg"></div>
@@ -28,7 +28,7 @@
                     <div class="indicator disconnected" id="ws-indicator"></div>
                     <span id="ws-text">Disconnected</span>
                 </div>
-                <button type="button" class="btn reconnect-btn" id="btn-reconnect">Reconnect</button>
+                <button type="button" class="btn reconnect-btn" id="btn-reconnect">RECONNECT</button>
             </div>
         </header>
 
@@ -127,12 +127,12 @@
                 </div>
                 <div class="control-grid">
                     <button class="btn cmd-btn arm-btn" id="btn-arm">ARM</button>
-                    <button class="btn cmd-btn offboard-btn offboard-inactive" id="btn-offboard">OFFBOARD</button>
+                    <button class="btn cmd-btn offboard-btn offboard-inactive" id="btn-offboard">TAKEOFF</button>
                     <button class="btn cmd-btn disarm-btn" id="btn-disarm">DISARM</button>
                     <button class="btn cmd-btn land-btn" id="btn-land">LAND</button>
                 </div>
                 <div class="emergency-action">
-                    <button class="btn danger-btn" id="btn-kill">EMERGENCY DISARM</button>
+                    <button class="btn danger-btn" id="btn-kill">EMERGENCY LAND</button>
                 </div>
             </section>
 
@@ -153,6 +153,6 @@
     </div>
 
     <div class="toast-message" id="toast-message" role="status" aria-live="polite"></div>
-    <script src="js/main.js?v=telemetry-motion-1"></script>
+    <script src="js/main.js?v=flight-relay-2"></script>
 </body>
 </html>

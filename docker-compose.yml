@@ -14,8 +14,10 @@ services:
       - CYCLONEDDS_URI=file:///cyclonedds.xml
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID}
     volumes:
-      # ROS2 workspace (control_code 기준)
-      - ./control_code:/workspace
+      # ROS2 workspace (px4_gui_ctrl 소스: control_code/src)
+      # - ./docker/co_paint/workspace:/workspace
+      - ./control_code/src:/workspace/src
+      - ${PX4_MSGS_INSTALL:-/home/samuel/px4_msgs_ws/install}:/px4_msgs_install:ro
 
       # DDS 설정
       - ./middleware/cyclonedds.xml:/cyclonedds.xml:ro
@@ -23,14 +25,14 @@ services:
 
 
   # -----------------------------
-  # HTML GCS (nginx)
+  # HTML GCS (nginx) — GCS 전체 host network (아키텍처 다이어그램 기준)
   # -----------------------------
   web_ui:
     build:
       context: ./docker/web_ui
       dockerfile: Dockerfile
-    env_file: .env
     network_mode: host
+    env_file: .env
     restart: unless-stopped
 
 
@@ -43,8 +45,6 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     network_mode: host
-    environment:
-      - PX4_LOCAL_POSITION_TOPIC=${PX4_LOCAL_POSITION_TOPIC:-/fmu/out/vehicle_local_position}
     volumes:
       - ./docker/server/src:/app/src
     depends_on:
@@ -62,7 +62,7 @@ services:
     networks:
       - app-network
     ports:  
-      - "0.0.0.0:5432:5432"
+      - "5432:5432"
     volumes:
       - ./docker/postgres/data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql

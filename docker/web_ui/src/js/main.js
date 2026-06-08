@@ -8,6 +8,10 @@ const TARGET_Z_MAX = 0.0;
 const DISPLAY_EPSILON = 0.000001;
 const COMMAND_LOG_ENDPOINT = '/api/command-logs';
 const KEYBOARD_LOG_THROTTLE_MS = 300;
+const WEB_COMMAND_TOPIC = '/web_ui/flight_command';
+const WEB_COMMAND_STATUS_TOPIC = '/web_ui/flight_command/status';
+const WEB_COMMAND_MESSAGE_TYPE = 'std_msgs/msg/String';
+const SUPPORTED_FLIGHT_COMMANDS = new Set(['ARM', 'DISARM', 'TAKEOFF', 'LAND', 'EMERGENCY']);
 
 let ros = new ROSLIB.Ros();
 let toastTimer = null;
@@ -68,23 +72,17 @@ const els = {
     toastMessage: document.getElementById('toast-message')
 };
 
-// Publisher and Subscribers
-let offboardPub = new ROSLIB.Topic({
+// High-level command publisher and telemetry subscribers.
+let flightCommandPub = new ROSLIB.Topic({
     ros: ros,
-    name: '/fmu/in/offboard_control_mode',
-    messageType: 'px4_msgs/msg/OffboardControlMode'
+    name: WEB_COMMAND_TOPIC,
+    messageType: WEB_COMMAND_MESSAGE_TYPE
 });
 
-let setpointPub = new ROSLIB.Topic({
+let flightCommandStatusSub = new ROSLIB.Topic({
     ros: ros,
-    name: '/fmu/in/trajectory_setpoint',
-    messageType: 'px4_msgs/msg/TrajectorySetpoint'
-});
-
-let cmdPub = new ROSLIB.Topic({
-    ros: ros,
-    name: '/fmu/in/vehicle_command',
-    messageType: 'px4_msgs/msg/VehicleCommand'
+    name: WEB_COMMAND_STATUS_TOPIC,
+    messageType: WEB_COMMAND_MESSAGE_TYPE
 });
 
 let posSub = new ROSLIB.Topic({
@@ -94,12 +92,6 @@ let posSub = new ROSLIB.Topic({
 });
 
 let statusSub = new ROSLIB.Topic({
-    ros: ros,
-    name: '/fmu/out/vehicle_status',
-    messageType: 'px4_msgs/msg/VehicleStatus'
-});
-
-let statusV1Sub = new ROSLIB.Topic({
     ros: ros,
     name: '/fmu/out/vehicle_status_v1',
     messageType: 'px4_msgs/msg/VehicleStatus'
@@ -173,7 +165,7 @@ function scheduleReconnect(delayMs = RECONNECT_DELAY_MS) {
 
 function updateReconnectButton() {
     if (!els.reconnectBtn) return;
-    els.reconnectBtn.textContent = state.ws_connecting ? 'Connecting...' : 'Reconnect';
+    els.reconnectBtn.textContent = 'RECONNECT';
 }
 
 function requestRosbridgeReconnect() {
@@ -247,7 +239,6 @@ function handleStatusMessage(msg) {
 }
 
 statusSub.subscribe(handleStatusMessage);
-statusV1Sub.subscribe(handleStatusMessage);
 
 batterySub.subscribe((msg) => {
     markDroneSeen();
@@ -262,6 +253,15 @@ batterySub.subscribe((msg) => {
     state.battery_warning = Number(msg.warning) || 0;
 
     updateBatteryDisplay();
+});
+
+flightCommandStatusSub.subscribe((msg) => {
+    const status = String(msg.data || '');
+    if (status.startsWith('REJECTED:')) {
+        showToast(`Relay rejected ${status.slice('REJECTED:'.length)}`);
+    } else if (status.startsWith('ACCEPTED:')) {
+        showToast(`Relay accepted ${status.slice('ACCEPTED:'.length)}`);
+    }
 });
 
 function updateBatteryDisplay() {
@@ -388,9 +388,9 @@ function nullableNumber(value) {
 }
 
 function getTargetChangeResult() {
-    if (state.drone_connected) return 'target_changed_drone_connected';
-    if (state.ws_connected) return 'target_changed_ws_only';
-    return 'target_changed_offline';
+    if (state.drone_connected) return 'target_updated_local_drone_connected';
+    if (state.ws_connected) return 'target_updated_local_ws_only';
+    return 'target_updated_local_offline';
 }
 
 function logCommandAttempt(fields = {}) {
@@ -465,12 +465,29 @@ function incrementTarget(dx = 0, dy = 0, dz = 0, dyaw = 0) {
 }
 
 // Commands
-function getTimestamp() {
-    // Basic ms to microsecond representation for PX4
-    return Math.floor(Date.now() * 1000);
+function isSupportedFlightCommand(commandName) {
+    return SUPPORTED_FLIGHT_COMMANDS.has(commandName) || commandName.startsWith('ALIGN_FOR_LAND:');
 }
 
-function sendCommand(cmd, p1 = 0.0, p2 = 0.0) {
+function makeAlignCommand() {
+    return `ALIGN_FOR_LAND:${state.target_x},${state.target_y},${state.target_z},${state.target_yaw}`;
+}
+
+function sendFlightCommand(commandName) {
+    const highLevelCommand = String(commandName || '').trim().toUpperCase();
+    if (!highLevelCommand) {
+        return {
+            published: false,
+            result: 'blocked_empty_command'
+        };
+    }
+    if (!isSupportedFlightCommand(highLevelCommand)) {
+        return {
+            published: false,
+            result: 'blocked_unsupported_by_flight_controller'
+        };
+    }
+
     if (!state.ws_connected) {
         return {
             published: false,
@@ -479,33 +496,39 @@ function sendCommand(cmd, p1 = 0.0, p2 = 0.0) {
     }
 
     let msg = new ROSLIB.Message({
-        command: cmd,
-        param1: p1,
-        param2: p2,
-        param3: 0.0, param4: 0.0, param5: 0.0, param6: 0.0, param7: 0.0,
-        target_system: 1,
-        target_component: 1,
-        source_system: 255,
-        source_component: 191,
-        confirmation: 0,
-        from_external: true,
-        timestamp: getTimestamp()
+        data: highLevelCommand
     });
 
     try {
-        cmdPub.publish(msg);
+        flightCommandPub.publish(msg);
         return {
             published: true,
-            result: state.drone_connected ? 'published_drone_connected' : 'published_ws_only'
+            result: state.drone_connected ? 'published_to_relay_drone_connected' : 'published_to_relay_ws_only'
         };
     } catch (err) {
-        console.error('Failed to publish command:', err);
+        console.error('Failed to publish flight command:', err);
         return {
             published: false,
             result: 'publish_failed',
             error: err && err.message ? err.message : String(err)
         };
     }
+}
+
+function logFlightCommandPublish(commandType, inputEvent, publishResult, details = {}) {
+    logCommandAttempt({
+        commandType,
+        inputEvent,
+        commandResult: publishResult.result,
+        details: {
+            published: publishResult.published,
+            error: publishResult.error || null,
+            command_topic: WEB_COMMAND_TOPIC,
+            relay_status_topic: WEB_COMMAND_STATUS_TOPIC,
+            route: 'web_ui -> ugv_web_command_relay -> flight_control_node',
+            ...details
+        }
+    });
 }
 
 function flashCommandButton(button) {
@@ -517,39 +540,36 @@ function flashCommandButton(button) {
     }, 180);
 }
 
-function sendCommandWithFeedback(button, message, commandType, cmd, p1 = 0.0, p2 = 0.0) {
+function sendFlightCommandWithFeedback(button, message, commandType, flightCommand) {
     flashCommandButton(button);
-    const publishResult = sendCommand(cmd, p1, p2);
-    logCommandAttempt({
-        commandType,
-        inputEvent: 'button_click',
-        commandCode: cmd,
-        param1: p1,
-        param2: p2,
-        commandResult: publishResult.result,
-        details: {
-            published: publishResult.published,
-            error: publishResult.error || null
-        }
+    const publishResult = sendFlightCommand(flightCommand);
+    logFlightCommandPublish(commandType, 'button_click', publishResult, {
+        high_level_command: flightCommand
     });
-    showToast(publishResult.result === 'blocked_ws_disconnected' ? 'WebSocket disconnected; command logged' : message);
+    if (publishResult.result === 'blocked_ws_disconnected') {
+        showToast('WebSocket disconnected; command logged');
+    } else if (publishResult.result === 'blocked_unsupported_by_flight_controller') {
+        showToast(`${commandType} is not supported by current flight controller API`);
+    } else {
+        showToast(message);
+    }
 }
 
 // Button Bindings
 els.armBtn.addEventListener('click', () => {
-    sendCommandWithFeedback(els.armBtn, 'ARM command sent', 'ARM', 400, 1.0); // 400 = ARM_DISARM
+    sendFlightCommandWithFeedback(els.armBtn, 'ARM command sent to relay', 'ARM', 'ARM');
 });
 els.offboardBtn.addEventListener('click', () => {
-    sendCommandWithFeedback(els.offboardBtn, 'OFFBOARD command sent', 'OFFBOARD', 176, 1.0, 6.0); // 176 = DO_SET_MODE
+    sendFlightCommandWithFeedback(els.offboardBtn, 'TAKEOFF command sent to relay', 'TAKEOFF', 'TAKEOFF');
 });
 els.disarmBtn.addEventListener('click', () => {
-    sendCommandWithFeedback(els.disarmBtn, 'DISARM command sent', 'DISARM', 400, 0.0);
+    sendFlightCommandWithFeedback(els.disarmBtn, 'DISARM command sent to relay', 'DISARM', 'DISARM');
 });
 els.landBtn.addEventListener('click', () => {
-    sendCommandWithFeedback(els.landBtn, 'LAND command sent', 'LAND', 73); // 73 = NAV_LAND
+    sendFlightCommandWithFeedback(els.landBtn, 'LAND command sent to relay', 'LAND', 'LAND');
 });
 els.killBtn.addEventListener('click', () => {
-    sendCommandWithFeedback(els.killBtn, '⚠️ Emergency disarm command sent', 'EMERGENCY_DISARM', 400, 0.0);
+    sendFlightCommandWithFeedback(els.killBtn, 'EMERGENCY command sent to relay', 'EMERGENCY', 'EMERGENCY');
 });
 
 els.reconnectBtn.addEventListener('click', requestRosbridgeReconnect);
@@ -573,16 +593,35 @@ els.targetForm.addEventListener('submit', (e) => {
     if (e.submitter) {
         flashCommandButton(e.submitter);
     }
+    const alignCommand = makeAlignCommand();
+    const publishResult = sendFlightCommand(alignCommand);
+    logFlightCommandPublish('SUBMIT_COORDINATES', 'form_submit', publishResult, {
+        high_level_command: alignCommand,
+        submitted_target: nextTarget
+    });
+    showToast(publishResult.published ? 'ALIGN command sent to relay' : 'Coordinates updated locally');
+});
+
+function logLocalTargetChange(action, publishResult, keyName) {
     logCommandAttempt({
-        commandType: 'SUBMIT_COORDINATES',
-        inputEvent: 'form_submit',
-        commandResult: getTargetChangeResult(),
+        commandType: action.commandType,
+        inputEvent: 'keyboard',
+        keyName,
+        commandResult: publishResult.result,
         details: {
-            submitted_target: nextTarget
+            published: publishResult.published,
+            error: publishResult.error || null,
+            high_level_command: makeAlignCommand(),
+            command_topic: WEB_COMMAND_TOPIC,
+            relay_status_topic: WEB_COMMAND_STATUS_TOPIC,
+            repeat: action.repeat,
+            dx: action.dx,
+            dy: action.dy,
+            dz: action.dz,
+            dyaw: action.dyaw
         }
     });
-    showToast('SUBMIT COORDINATES command sent');
-});
+}
 
 // Keyboard Teleop
 window.addEventListener('keydown', (e) => {
@@ -608,52 +647,14 @@ window.addEventListener('keydown', (e) => {
         e.preventDefault();
     }
 
+    const publishResult = sendFlightCommand(makeAlignCommand());
     const now = Date.now();
     if (now - lastKeyboardLogAt >= KEYBOARD_LOG_THROTTLE_MS) {
         lastKeyboardLogAt = now;
-        logCommandAttempt({
-            commandType: action.commandType,
-            inputEvent: 'keyboard',
-            keyName: e.key,
-            commandResult: getTargetChangeResult(),
-            details: {
-                repeat: e.repeat,
-                dx: action.dx,
-                dy: action.dy,
-                dz: action.dz,
-                dyaw: action.dyaw
-            }
-        });
+        action.repeat = e.repeat;
+        logLocalTargetChange(action, publishResult, e.key);
     }
 });
-
-// 10Hz Offboard setpoint refresh loop, matching gui_node's continuous stream.
-setInterval(() => {
-    if (!state.drone_connected) return;
-
-    // Offboard Control Mode
-    let offMsg = new ROSLIB.Message({
-        position: true,
-        velocity: false,
-        acceleration: false,
-        attitude: false,
-        body_rate: false,
-        timestamp: getTimestamp()
-    });
-    offboardPub.publish(offMsg);
-
-    // Trajectory Setpoint
-    let spMsg = new ROSLIB.Message({
-        position: [state.target_x, state.target_y, state.target_z],
-        yaw: state.target_yaw * (Math.PI / 180.0), // Deg to Rad
-        velocity: [NaN, NaN, NaN],
-        acceleration: [NaN, NaN, NaN],
-        yawspeed: NaN,
-        timestamp: getTimestamp()
-    });
-    setpointPub.publish(spMsg);
-
-}, 100);
 
 setInterval(updateDroneConnectionStatus, 500);
 

@@ -80,10 +80,36 @@ EXPOSE 9090
 
 CMD ["/bin/bash", "-c", \
     "source /opt/ros/humble/setup.bash && \
-     if [ -d /workspace/src ] && [ ! -f /workspace/install/setup.bash ]; then \
-       colcon build --symlink-install --base-paths /workspace/src; \
+     BUILD_BASE=/tmp/co_paint_build && \
+     INSTALL_BASE=/tmp/co_paint_install && \
+     LOG_BASE=/tmp/co_paint_log && \
+     if [ -f /px4_msgs_install/setup.bash ]; then \
+       source /px4_msgs_install/setup.bash; \
      fi && \
      if [ -f /workspace/install/setup.bash ]; then \
        source /workspace/install/setup.bash; \
+     fi && \
+     if [ -d /workspace/src ]; then \
+       if ros2 pkg prefix px4_msgs >/dev/null 2>&1; then \
+         colcon --log-base $LOG_BASE build --symlink-install \
+           --base-paths /workspace/src \
+           --packages-select px4_gui_ctrl \
+           --build-base $BUILD_BASE \
+           --install-base $INSTALL_BASE; \
+       else \
+         colcon --log-base $LOG_BASE build --symlink-install \
+           --base-paths /workspace/src \
+           --packages-up-to px4_gui_ctrl \
+           --build-base $BUILD_BASE \
+           --install-base $INSTALL_BASE; \
+       fi; \
+     fi && \
+     if [ -f $INSTALL_BASE/setup.bash ]; then \
+       source $INSTALL_BASE/setup.bash; \
+     elif [ -f /workspace/install/setup.bash ]; then \
+       source /workspace/install/setup.bash; \
+     fi && \
+     if [ -f /px4_msgs_install/setup.bash ]; then \
+       source /px4_msgs_install/setup.bash; \
      fi && \
      exec ros2 launch /launch/rosbridge.launch.py"]

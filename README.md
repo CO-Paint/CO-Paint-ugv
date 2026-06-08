@@ -7,7 +7,7 @@ ROS2-based UGV system for the CO-Paint project, including navigation, control, a
 
 ### 시스템 구성 및 데이터 처리 체계
 - **메인 데스크톱 / GCS (본 레포지토리 구동 PC)**: `192.168.53.5`, 전체 제어 서버 역할 및 드론 SLAM 작업 수행
-- **보조 미니 PC**: `192.168.53.6`, UGV SLAM 작업 담당
+- **보조 미니 PC**: `192.168.53.4`, UGV SLAM 작업 담당
 - **드론 장착 라즈베리파이 (Raspberry Pi)**: `192.168.53.2`, 드론 내부 제어 통신
 - **라이다(LiDAR) 센서**: 드론과 UGV에 각각 장착된 센서 데이터
 위의 장치(PC, 통신 파이) 및 모든 라이다 센서는 UGV에 설치된 네트워크(공유기 등)를 통해 연결됩니다. 이렇게 취합된 데이터는 **본 레포지토리를 다운로드하여 실행 중인 메인 데스크톱**에서 최종 처리 및 제어됩니다.
@@ -35,7 +35,7 @@ git config --global core.autocrlf해 input
 ### 0. 기준 네트워크 및 접속 주소
 ```text
 GCS:                  192.168.53.5
-Mini PC:              192.168.53.6
+Mini PC:              192.168.53.4
 Raspberry Pi:         192.168.53.2
 Subnet:               192.168.53.0/24
 Web UI:               http://192.168.53.5
@@ -81,6 +81,13 @@ colcon build
 source ~/px4_msgs_ws/install/setup.bash
 ```
 
+`docker-compose.yml`은 기본적으로 `/home/samuel/px4_msgs_ws/install`을 `co_paint` 컨테이너의 `/px4_msgs_install`로 마운트
+다른 경로에 빌드했다면 `.env`에 아래 값을 추가
+
+```env
+PX4_MSGS_INSTALL=/home/samuel/px4_msgs_ws/install
+```
+
 
 
 #### 2-1. Drone 직접 제어 실행
@@ -111,7 +118,7 @@ ls -l cyclonedds.xml
 nano ~/CO_Paint/CO-Paint-uav-edge/cyclonedds.xml
 # scp 명령어 사용시 파일 전송받는 쪽 PC IP로 변경
 # Raspberry Pi에서는 <NetworkInterfaceAddress>를 192.168.53.2로 수정
-# Mini PC에서는 <NetworkInterfaceAddress>를 192.168.53.6으로 수정
+# Mini PC에서는 <NetworkInterfaceAddress>를 192.168.53.4로 수정
 
 # 설정 추가
 nano ~/.bashrc
@@ -136,7 +143,7 @@ sudo ufw allow 5432/tcp
 sudo ufw allow 8888/udp
 
 # 방화벽 설정 - 모든 ROS 2 DDS PC
-sudo ufw allow in proto udp from 192.168.53.0/24 to any port 20650:20800
+sudo ufw allow in proto udp from 192.168.53.0/24
 sudo ufw reload
 sudo ufw status
 ```
@@ -168,39 +175,112 @@ sudo ufw enable
 
 ### 4. DDS 통신 및 DB 저장 확인
 #### 토픽 테스트
-##### std_msgs type
-###### 데스크톱 (수신)
+테스트 순서는 항상 **수신 쪽에서 echo 대기 → 송신 쪽에서 publish** 순서로 진행
+
+ROS 2 daemon 초기화가 필요할 때만 데스크톱에서 실행
+
 ```bash
+cd ~/dev/projects/CO_Paint/ugv_system
 docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; ros2 daemon stop; ros2 daemon start"
+```
+
+방화벽을 켠 상태에서 테스트하려면 데스크톱과 라즈베리 파이 모두 내부망 UDP를 허용
+
+```bash
+sudo ufw allow in proto udp from 192.168.53.0/24
+sudo ufw reload
+sudo ufw status
+```
+
+##### std_msgs 통신 테스트 + DB 저장 확인
+이 테스트는 문자열 토픽이 DDS로 양방향 통신되는지 확인. `/copaint/net_test`는 `server` logger가 `topic_communication_test_logs` 테이블에 저장
+
+###### Raspberry Pi → Desktop
+데스크톱에서 먼저 수신 대기
+
+```bash
+cd ~/dev/projects/CO_Paint/ugv_system
 
 docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; ros2 topic echo /copaint/net_test std_msgs/msg/String"
 ```
 
+라즈베리 파이에서 송신
 
-###### 라즈베리 파이
 ```bash
-ros2 topic pub /copaint/net_test std_msgs/msg/String "{data: 'uav_edge_test_from_personal_minipc'}" -r 1
+source /opt/ros/humble/setup.bash
+source ~/CO_Paint/CO-Paint-uav-edge/copaint_ws/install/setup.bash
+
+ros2 topic pub -r 1 \
+  /copaint/net_test \
+  std_msgs/msg/String \
+  "{data: 'raspberry_pi_std_test'}"
 ```
 
+###### Desktop → Raspberry Pi
+라즈베리 파이에서 먼저 수신 대기
 
+```bash
+source /opt/ros/humble/setup.bash
+source ~/CO_Paint/CO-Paint-uav-edge/copaint_ws/install/setup.bash
 
-##### px4_msgs type
-###### 데스크톱 (수신)
+ros2 topic echo /copaint/gcs_std_test std_msgs/msg/String
+```
+
+데스크톱에서 송신
+
 ```bash
 cd ~/dev/projects/CO_Paint/ugv_system
 
-# px4_msgs 확인용
-docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /workspace/install/local_setup.bash; ros2 interface show px4_msgs/msg/VehicleStatus"
+docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; ros2 topic pub -r 1 /copaint/gcs_std_test std_msgs/msg/String \"{data: 'gcs_std_test'}\""
+```
 
-# 토픽 테스트
-docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /workspace/install/local_setup.bash; ros2 topic echo /copaint/px4_net_test px4_msgs/msg/VehicleStatus --qos-reliability best_effort"
+###### DB/API 확인
+```bash
+cd ~/dev/projects/CO_Paint/ugv_system
+
+docker compose exec -T postgres psql -U ugv -d ugv_db -c "SELECT topic_test_log_id, received_at, topic_name, message_data, source_name FROM topic_communication_test_logs ORDER BY topic_test_log_id DESC LIMIT 10;"
+
+curl "http://192.168.53.5/api/topic-test-logs?limit=10"
 ```
 
 
-###### 라즈베리 파이
+##### px4_msgs 통신 테스트
+이 테스트는 PX4 메시지 타입이 DDS를 통해 양방향으로 오가는지 확인
+
+`ros2 interface show`는 통신 테스트가 아니라 **해당 장비가 px4_msgs 타입을 인식하는지 확인**하는 명령. 최초 1회 또는 `Unknown package 'px4_msgs'`, `The passed message type is invalid` 오류가 날 때만 확인
+
+###### 타입 인식 확인
+데스크톱 / GCS
+
+```bash
+cd ~/dev/projects/CO_Paint/ugv_system
+
+docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /px4_msgs_install/setup.bash; source /tmp/co_paint_install/setup.bash; ros2 interface show px4_msgs/msg/VehicleStatus"
+```
+
+라즈베리 파이
+
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/px4_msgs_ws/install/setup.bash  
+source ~/CO_Paint/CO-Paint-uav-edge/copaint_ws/install/setup.bash
+
+ros2 interface show px4_msgs/msg/VehicleStatus
+```
+
+###### Raspberry Pi → Desktop
+데스크톱에서 먼저 수신 대기
+
+```bash
+cd ~/dev/projects/CO_Paint/ugv_system
+
+docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /px4_msgs_install/setup.bash; source /tmp/co_paint_install/setup.bash; ros2 topic echo /copaint/px4_net_test px4_msgs/msg/VehicleStatus --qos-reliability best_effort"
+```
+
+라즈베리 파이에서 송신
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/CO_Paint/CO-Paint-uav-edge/copaint_ws/install/setup.bash
 
 ros2 topic pub -r 1 --qos-reliability best_effort \
   /copaint/px4_net_test \
@@ -208,18 +288,59 @@ ros2 topic pub -r 1 --qos-reliability best_effort \
   "{timestamp: 0, arming_state: 2, nav_state: 14, failsafe: false}"
 ```
 
+###### Desktop → Raspberry Pi
+라즈베리 파이에서 먼저 수신 대기
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/CO_Paint/CO-Paint-uav-edge/copaint_ws/install/setup.bash
+
+ros2 topic echo /copaint/gcs_px4_test px4_msgs/msg/VehicleStatus --qos-reliability best_effort
+```
+
+데스크톱에서 송신
+
+```bash
+cd ~/dev/projects/CO_Paint/ugv_system
+
+docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /px4_msgs_install/setup.bash; source /tmp/co_paint_install/setup.bash; ros2 topic pub -r 1 --qos-reliability best_effort /copaint/gcs_px4_test px4_msgs/msg/VehicleStatus \"{timestamp: 0, arming_state: 2, nav_state: 14, failsafe: false}\""
+```
+
 
 
 ##### 실패 시
+메시지가 보이지 않을 때 확인 순서:
+
 ```bash
-WARNING: topic [/copaint/net_test] does not appear to be published yet
-Could not determine the type for the passed topic
-samuel@samuel3740:~/dev/projects/CO_Paint/ugv_system
+# 데스크톱/GCS
+cd ~/dev/projects/CO_Paint/ugv_system
+scripts/check_network.sh
+docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /px4_msgs_install/setup.bash; printenv | grep -E 'ROS_DOMAIN_ID|RMW_IMPLEMENTATION|CYCLONEDDS_URI|ROS_LOCALHOST_ONLY'"
+docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /px4_msgs_install/setup.bash; ros2 topic list"
+
+# 라즈베리 파이
+printenv | grep -E "ROS_DOMAIN_ID|RMW_IMPLEMENTATION|CYCLONEDDS_URI|ROS_LOCALHOST_ONLY"
+sed -n '1,45p' ~/CO_Paint/CO-Paint-uav-edge/cyclonedds.xml
+sudo ufw status
 ```
 
-`/copaint/net_test` 토픽 통신 테스트 결과는 `telemetry_logs`가 아니라 별도 테이블인 `topic_communication_test_logs`에 저장
+정상 기준:
 
-`telemetry_logs`는 PX4 위치/상태 토픽(`/fmu/out/vehicle_local_position`, `/fmu/out/vehicle_status`) 기록용
+- `ROS_DOMAIN_ID=53`
+- `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
+- `ROS_LOCALHOST_ONLY=1`이 없어야 함
+- GCS `cyclonedds.xml`의 `NetworkInterfaceAddress`는 `192.168.53.5`
+- Raspberry Pi `cyclonedds.xml`의 `NetworkInterfaceAddress`는 `192.168.53.2`
+- Peers에는 `192.168.53.5`, `192.168.53.4`, `192.168.53.2` 포함
+- UFW를 켠 경우 양쪽 모두 `sudo ufw allow in proto udp from 192.168.53.0/24` 필요
+
+`The passed message type is invalid` 또는 `Unknown package 'px4_msgs'`가 나오면 해당 장비에서 `px4_msgs` setup 파일을 source하지 못한 상태
+
+`/copaint/net_test` 테스트 결과는 `telemetry_logs`가 아니라 `topic_communication_test_logs`에 저장
+
+`/copaint/px4_net_test`는 px4_msgs DDS 통신 확인용. DB 저장 대상 기본 토픽은 아님
+
+`telemetry_logs`는 PX4 위치/상태 토픽(`/fmu/out/vehicle_local_position`, `/fmu/out/vehicle_status_v1`) 기록용
 
 **DB에서 최근 통신 테스트 로그 확인**
 ```bash
@@ -409,7 +530,7 @@ GCS_IP=192.168.53.5
 
 ```xml
 <NetworkInterfaceAddress>192.168.53.5</NetworkInterfaceAddress>
-<Peer address="192.168.53.10"/>  <!-- Desktop PC / GCS -->
+<Peer address="192.168.53.5"/>  <!-- Desktop PC / GCS -->
 ```
 
 `docker/web_ui/nginx.conf`:
@@ -492,7 +613,7 @@ Peers:
 
 ```xml
 <Peer address="192.168.53.5"/>  <!-- Desktop PC / GCS -->
-<Peer address="192.168.53.6"/>  <!-- Mini PC / UGV SLAM -->
+<Peer address="192.168.53.4"/>  <!-- Mini PC / UGV SLAM -->
 <Peer address="192.168.53.2"/>  <!-- UAV edge / Raspberry Pi role -->
 ```
 
@@ -517,7 +638,7 @@ ls -l cyclonedds.xml
 nano ~/CO_Paint/CO-Paint-uav-edge/cyclonedds.xml
 # scp 명령어 사용시 파일 전송받는 쪽 PC IP로 변경
 # Raspberry Pi에서는 <NetworkInterfaceAddress>를 192.168.53.2로 수정
-# Mini PC에서는 <NetworkInterfaceAddress>를 192.168.53.6으로 수정
+# Mini PC에서는 <NetworkInterfaceAddress>를 192.168.53.4로 수정
 
 # 설정 추가
 nano ~/.bashrc
@@ -542,7 +663,7 @@ sudo ufw allow 5432/tcp
 sudo ufw allow 8888/udp
 
 # 방화벽 설정 - 모든 ROS 2 DDS PC
-sudo ufw allow in proto udp from 192.168.53.0/24 to any port 20650:20800
+sudo ufw allow in proto udp from 192.168.53.0/24
 sudo ufw reload
 sudo ufw status
 ```
@@ -692,7 +813,7 @@ scripts/check_network.sh
 
 ```text
 192.168.53.5 GCS ping
-192.168.53.6 Mini PC ping
+192.168.53.4 Mini PC ping
 192.168.53.2 Raspberry Pi ping
 192.168.53.5:80 Web UI TCP
 192.168.53.5:9090 rosbridge TCP

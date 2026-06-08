@@ -23,4 +23,15 @@ def generate_launch_description():
                 'port': port,
             }],
         ),
+        Node(
+            package='px4_gui_ctrl',
+            executable='web_command_relay',
+            name='ugv_web_command_relay',
+            output='screen',
+            parameters=[{
+                'web_command_topic': '/web_ui/flight_command',
+                'mission_cmd_topic': '/flight_control/mission_cmd',
+                'status_topic': '/web_ui/flight_command/status',
+            }],
+        ),
     ])
