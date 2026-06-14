@@ -36,9 +36,20 @@ class WebCommandRelay(Node):
         self.declare_parameter('mission_cmd_topic', '/flight_control/mission_cmd')
         self.declare_parameter('status_topic', '/web_ui/flight_command/status')
 
-        command_qos = QoSProfile(
+        # Web UI / rosbridge side QoS
+        # Keep VOLATILE for browser/rosbridge command and status topics.
+        web_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+        )
+
+        # flight_control_node subscribes to /flight_control/mission_cmd with
+        # RELIABLE + TRANSIENT_LOCAL, so the relay publisher must match it.
+        mission_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
         )
@@ -46,18 +57,18 @@ class WebCommandRelay(Node):
         self.mission_pub = self.create_publisher(
             String,
             self.get_parameter('mission_cmd_topic').value,
-            command_qos,
+            mission_qos,
         )
         self.status_pub = self.create_publisher(
             String,
             self.get_parameter('status_topic').value,
-            command_qos,
+            web_qos,
         )
         self.create_subscription(
             String,
             self.get_parameter('web_command_topic').value,
             self.command_cb,
-            command_qos,
+            web_qos,
         )
 
         self.get_logger().info(
