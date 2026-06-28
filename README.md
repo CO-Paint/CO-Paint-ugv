@@ -1,880 +1,190 @@
-# CO-Paint-ugv
-ROS2-based UGV system for the CO-Paint project, including navigation, control, and communication modules.
+# CO-Paint UGV System
 
-## 프로젝트 개요 (Project Overview)
-현재 UGV와 드론을 통신 및 연결하여 페인트를 뿌리는 프로젝트를 진행 중입니다.
-본 레포지토리는 UGV에 탑재되는 데스크톱용 레포지토리로, 프로젝트의 **메인 제어 서버**로 활용되며 동시에 **드론의 SLAM 처리**를 담당합니다.
+CO-Paint UGV System은 건물 외벽 도색 자동화를 위해 UGV, UAV, LiDAR, 카메라, GCS를 ROS 2 기반으로 연결하는 지상 제어 시스템입니다. 이 레포지토리는 CO-Paint 전체 시스템에서 **메인 제어 서버**, **GCS Web UI**, **ROS 2 통신 허브**, **텔레메트리/명령 로그 저장소**, **SLAM 및 비전 파이프라인 연동부**를 담당합니다.
 
-### 시스템 구성 및 데이터 처리 체계
-- **메인 데스크톱 / GCS (본 레포지토리 구동 PC)**: `192.168.53.5`, 전체 제어 서버 역할 및 드론 SLAM 작업 수행
-- **보조 미니 PC**: `192.168.53.4`, UGV SLAM 작업 담당
-- **드론 장착 라즈베리파이 (Raspberry Pi)**: `192.168.53.2`, 드론 내부 제어 통신
-- **라이다(LiDAR) 센서**: 드론과 UGV에 각각 장착된 센서 데이터
-위의 장치(PC, 통신 파이) 및 모든 라이다 센서는 UGV에 설치된 네트워크(공유기 등)를 통해 연결됩니다. 이렇게 취합된 데이터는 **본 레포지토리를 다운로드하여 실행 중인 메인 데스크톱**에서 최종 처리 및 제어됩니다.
+프로젝트의 목표는 드론이 외벽을 촬영하고, 비전 모델이 도색 가능 영역과 도색 금지 영역을 분류하며, UGV와 GCS가 센서/제어/로그 데이터를 통합해 안전한 도색 작업을 수행하도록 만드는 것입니다.
 
-### 주요 역할
-- 메인 시스템 제어 (통신 서버)
-- 드론 센서 데이터 수신 및 SLAM 처리
-- ROS2 기반 경로 탐색(Navigation), 주행 제어(Control) 및 통신(Communication) 모듈 통합 구동
+## Project Overview
 
+CO-Paint는 드론 단독 운용이 아니라 UGV와 드론을 하나의 로봇 시스템으로 묶어 운용합니다. UGV는 내부 네트워크, 센서 데이터 수집, 착륙 보조, 지상 연산 환경을 제공하고, 드론은 외벽 촬영과 도색 작업을 수행합니다.
 
-## Getting Started
-### 1. Clone 전 Git 설정 (Windows 사용자 필수)
+이 레포지토리의 중심 역할은 다음과 같습니다.
 
-Windows 환경에서 클론하기 전에 아래 명령어를 먼저 실행하세요.
-```bash
-git config --global core.autocrlf해 input
-```
+- GCS PC에서 Web UI, API 서버, rosbridge, PostgreSQL을 실행합니다.
+- ROS 2 DDS 네트워크를 통해 GCS, Mini PC, UAV edge 장비를 연결합니다.
+- PX4 기반 드론 상태와 위치 데이터를 수신하고 로그로 저장합니다.
+- Web UI 명령을 검증한 뒤 드론 제어 노드로 전달합니다.
+- 드론/UGV SLAM, 비전 세그멘테이션, 자동 착륙 제어 패키지를 함께 관리합니다.
 
-> Windows는 Ubuntu와 달리 기본적으로 줄바꿈 문자를 CRLF로 변환하여 Docker 컨테이너나 Ubuntu에서 문제가 발생하는 것을 방지.
+## System Architecture
 
-
-## Setting
-새 PC 초기 세팅 절차를 완료된 이후 확인사항
-
-### 0. 기준 네트워크 및 접속 주소
-```text
-GCS:                  192.168.53.5
-Mini PC:              192.168.53.4
-Raspberry Pi:         192.168.53.2
-Subnet:               192.168.53.0/24
-Web UI:               http://192.168.53.5
-WebSocket proxy:      ws://192.168.53.5/rosbridge/
-```
-
-GCS PC는 `http://192.168.53.5` 혹은 `http://localhost`로 접속
-외부 PC는 같은 `192.168.53.0/24` 라우터에 연결 후 `http://192.168.53.5`로 접속
-WebSocket은 웹 서버의 `/rosbridge/` 경로에서 `ws://192.168.53.5/rosbridge/`로 확인
-
-
-
-### 0-1. Network Traffic Flow
 ![Network Traffic Flow Diagram](images/README/Network%20Traffic%20Flow%20Diagram.png)
 
-- 외부 브라우저는 GCS `80/tcp`의 `web_ui` nginx로 접속
-- nginx는 `/api/` 요청을 `server:8000` FastAPI로 프록시
-- nginx는 `/rosbridge/` 요청을 `co_paint:9090` rosbridge WebSocket으로 프록시
-- `server`는 `postgres:5432`에 통신/텔레메트리 로그 저장
-- ROS 2 DDS는 `20650-20800/udp`, Micro XRCE-DDS는 `8888/udp` 사용
+| 장치 | 기준 주소 | 역할 |
+| --- | --- | --- |
+| GCS / Main Desktop | `192.168.53.5` | 메인 제어 서버, Web UI, FastAPI, rosbridge, PostgreSQL, 드론 SLAM 연동 |
+| Mini PC | `192.168.53.4` | UGV SLAM 처리 |
+| UAV Edge / Raspberry Pi | `192.168.53.2` | 드론 내부 제어 통신 및 PX4 연동 |
+| LiDAR Sensors | 내부망 연결 | 드론/UGV 위치 추정과 SLAM 입력 |
+| Internal Network | `192.168.53.0/24` | GCS, UGV, UAV edge, 센서 통신망 |
 
+외부 브라우저는 GCS의 nginx Web UI에 접속합니다. nginx는 `/api/` 요청을 FastAPI 서버로 전달하고, `/rosbridge/` 요청을 ROS 2 WebSocket 인터페이스로 전달합니다. FastAPI와 telemetry logger는 PX4 상태, 위치, Web UI 명령, 통신 테스트 로그를 PostgreSQL에 저장합니다.
 
+## Core Features
 
-### 1. Network test
-전체 네트워크 테스트는 `10. 전체 네트워크 테스트`에서 실행
-장치 ping, GCS Web UI, API 프록시, rosbridge WebSocket 프록시 함께 확인
+### GCS Web Control
 
+GCS Web UI는 드론 연결 상태, WebSocket 상태, 위치/자세/배터리 텔레메트리, 목표 좌표 입력, ARM/TAKEOFF/LAND/EMERGENCY 명령을 제공합니다. 브라우저에서 발생한 고수준 명령은 `/web_ui/flight_command`로 발행되고, `web_command_relay` 노드가 이를 검증한 뒤 `/flight_control/mission_cmd`로 전달합니다.
 
+### ROS 2 Communication Hub
 
-### 2. PX4 1.16 의존성 준비
-- MicroXrce-dds: https://github.com/eProsima/Micro-XRCE-DDS
-- PX4 autopilot: https://github.com/PX4/PX4-Autopilot
-- PX4 버전: 1.16 사용
-- px4_msgs: `release/1.16` 빌드 후 source 실행
+CycloneDDS와 rosbridge를 사용해 GCS, Mini PC, UAV edge 간 ROS 2 토픽을 교환합니다. PX4 1.16 계열 메시지(`px4_msgs`)와 표준 ROS 메시지를 함께 사용하며, Web UI와 ROS 2 네트워크 사이의 연결 지점은 GCS의 rosbridge가 담당합니다.
 
+### Telemetry and Command Logging
 
-```bash
-mkdir -p ~/px4_msgs_ws/src
-cd ~/px4_msgs_ws/src
-git clone -b release/1.16 https://github.com/PX4/px4_msgs.git
-cd ~/px4_msgs_ws
-colcon build
-source ~/px4_msgs_ws/install/setup.bash
-```
+`server`와 `telemetry_logger`는 rosbridge와 PostgreSQL을 연결합니다. 드론 위치, PX4 vehicle status, Web UI 명령, 네트워크 통신 테스트 메시지를 DB에 저장하고 API로 조회할 수 있습니다.
 
-`docker-compose.yml`은 기본적으로 `/home/samuel/px4_msgs_ws/install`을 `co_paint` 컨테이너의 `/px4_msgs_install`로 마운트
-다른 경로에 빌드했다면 `.env`에 아래 값을 추가
+주요 API는 다음과 같습니다.
 
-```env
-PX4_MSGS_INSTALL=/home/samuel/px4_msgs_ws/install
-```
+| API | 용도 |
+| --- | --- |
+| `GET /api/health` | 서버와 DB 연결 상태 확인 |
+| `GET /api/telemetry` | 최근 드론 위치/상태 로그 조회 |
+| `POST /api/command-logs` | Web UI 명령 로그 저장 |
+| `GET /api/command-logs` | 명령 로그 조회 |
+| `GET /api/topic-test-logs` | ROS 2 통신 테스트 로그 조회 |
+| `GET /api/px4-vehicle-status-logs` | PX4 vehicle status 로그 조회 |
 
+### Vision Pipeline
 
+`painting_drone` 패키지는 RGB 이미지에서 외벽 도색 가능 영역과 도색 금지 영역을 분류합니다. ResNet-50 기반 세그멘테이션 결과를 바탕으로 facade, window, balcony, blind 등을 구분하고, BBox 및 목표 오차를 드론 제어 노드로 전달합니다.
 
-#### 2-1. Drone 직접 제어 실행
-터미널 2개에서 통신 에이전트와 제어 GUI 노드를 순서대로 실행
+| Raw Input | Segmentation / Detection Result |
+| --- | --- |
+| ![Vision raw image](images/README/Vision_Raw1.png) | ![Vision result image](images/README/Vision_result1.png) |
+| ![Vision raw image 2](images/README/Vision_Raw2.png) | ![Vision result image 2](images/README/Vision_result2.png) |
 
-**Terminal 1 (통신 에이전트 실행)**
-```bash
-MicroXRCEAgent udp4 -p 8888
-```
-
-**Terminal 2 (제어 GUI 노드 실행)**
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system/control_code
-source install/setup.bash
-ros2 run px4_gui_ctrl gui_node
-```
-
-
-
-### 3. CycloneDDS / ROS 2 DDS / 방화벽 설정
-Raspberry Pi로 `cyclonedds.xml` 복사, 장치별 IP 수정, `~/.bashrc` 설정, 방화벽 허용 순서로 실행
-
-```bash
-scp ~/dev/projects/CO_Paint/ugv_system/middleware/cyclonedds.xml samuel@192.168.53.2:/home/samuel/CO_Paint/CO-Paint-uav-edge/cyclonedds.xml
-
-cd ~/CO_Paint/CO-Paint-uav-edge
-ls -l cyclonedds.xml
-nano ~/CO_Paint/CO-Paint-uav-edge/cyclonedds.xml
-# scp 명령어 사용시 파일 전송받는 쪽 PC IP로 변경
-# Raspberry Pi에서는 <NetworkInterfaceAddress>를 192.168.53.2로 수정
-# Mini PC에서는 <NetworkInterfaceAddress>를 192.168.53.4로 수정
-
-# 설정 추가
-nano ~/.bashrc
-
-# ROS 2 Humble setup
-source /opt/ros/humble/setup.bash
-
-# CO-Paint ROS2 DDS settings
-export ROS_DOMAIN_ID=53
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export CYCLONEDDS_URI=file:///home/samuel/CO_Paint/CO-Paint-uav-edge/cyclonedds.xml
-
-# DDS 세팅 확인
-printenv | grep -E "ROS_DOMAIN_ID|RMW_IMPLEMENTATION|CYCLONEDDS_URI"
-
-# 방화벽 설정 - GCS PC에서 Web UI, rosbridge, API, PostgreSQL, DDS, Micro XRCE-DDS 포트 허용
-sudo ufw allow 22/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 8000/tcp
-sudo ufw allow 9090/tcp
-sudo ufw allow 5432/tcp
-sudo ufw allow 8888/udp
-
-# 방화벽 설정 - 모든 ROS 2 DDS PC
-sudo ufw allow in proto udp from 192.168.53.0/24
-sudo ufw reload
-sudo ufw status
-```
-
-`ufw`가 비활성화되어 있으면 활성화
-
-```bash
-cd ~
-sudo ufw enable
-sudo ufw status verbose
-```
-
-테스트 중 방화벽 영향인지 빠르게 확인해야 할 때만 임시로 off
-
-```bash
-cd ~
-sudo ufw disable
-sudo ufw status
-```
-
-운영 시 다시 on
-
-```bash
-cd ~
-sudo ufw enable
-```
-
-
-
-### 4. DDS 통신 및 DB 저장 확인
-#### 토픽 테스트
-테스트 순서는 항상 **수신 쪽에서 echo 대기 → 송신 쪽에서 publish** 순서로 진행
-
-ROS 2 daemon 초기화가 필요할 때만 데스크톱에서 실행
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; ros2 daemon stop; ros2 daemon start"
-```
-
-방화벽을 켠 상태에서 테스트하려면 데스크톱과 라즈베리 파이 모두 내부망 UDP를 허용
-
-```bash
-sudo ufw allow in proto udp from 192.168.53.0/24
-sudo ufw reload
-sudo ufw status
-```
-
-##### std_msgs 통신 테스트 + DB 저장 확인
-이 테스트는 문자열 토픽이 DDS로 양방향 통신되는지 확인. `/copaint/net_test`는 `server` logger가 `topic_communication_test_logs` 테이블에 저장
-
-###### Raspberry Pi → Desktop
-데스크톱에서 먼저 수신 대기
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-
-docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; ros2 topic echo /copaint/net_test std_msgs/msg/String"
-```
-
-라즈베리 파이에서 송신
-
-```bash
-source /opt/ros/humble/setup.bash
-source ~/CO_Paint/CO-Paint-uav-edge/copaint_ws/install/setup.bash
-
-ros2 topic pub -r 1 \
-  /copaint/net_test \
-  std_msgs/msg/String \
-  "{data: 'raspberry_pi_std_test'}"
-```
-
-###### Desktop → Raspberry Pi
-라즈베리 파이에서 먼저 수신 대기
-
-```bash
-source /opt/ros/humble/setup.bash
-source ~/CO_Paint/CO-Paint-uav-edge/copaint_ws/install/setup.bash
-
-ros2 topic echo /copaint/gcs_std_test std_msgs/msg/String
-```
-
-데스크톱에서 송신
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-
-docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; ros2 topic pub -r 1 /copaint/gcs_std_test std_msgs/msg/String \"{data: 'gcs_std_test'}\""
-```
-
-###### DB/API 확인
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-
-docker compose exec -T postgres psql -U ugv -d ugv_db -c "SELECT topic_test_log_id, received_at, topic_name, message_data, source_name FROM topic_communication_test_logs ORDER BY topic_test_log_id DESC LIMIT 10;"
-
-curl "http://192.168.53.5/api/topic-test-logs?limit=10"
-```
-
-
-##### px4_msgs 통신 테스트
-이 테스트는 PX4 메시지 타입이 DDS를 통해 양방향으로 오가는지 확인
-
-`ros2 interface show`는 통신 테스트가 아니라 **해당 장비가 px4_msgs 타입을 인식하는지 확인**하는 명령. 최초 1회 또는 `Unknown package 'px4_msgs'`, `The passed message type is invalid` 오류가 날 때만 확인
-
-###### 타입 인식 확인
-데스크톱 / GCS
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-
-docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /px4_msgs_install/setup.bash; source /tmp/co_paint_install/setup.bash; ros2 interface show px4_msgs/msg/VehicleStatus"
-```
-
-라즈베리 파이
-
-```bash
-source /opt/ros/humble/setup.bash
-source ~/CO_Paint/CO-Paint-uav-edge/copaint_ws/install/setup.bash
-
-ros2 interface show px4_msgs/msg/VehicleStatus
-```
-
-###### Raspberry Pi → Desktop
-데스크톱에서 먼저 수신 대기
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-
-docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /px4_msgs_install/setup.bash; source /tmp/co_paint_install/setup.bash; ros2 topic echo /copaint/px4_net_test px4_msgs/msg/VehicleStatus --qos-reliability best_effort"
-```
-
-라즈베리 파이에서 송신
-
-```bash
-source /opt/ros/humble/setup.bash
-source ~/CO_Paint/CO-Paint-uav-edge/copaint_ws/install/setup.bash
-
-ros2 topic pub -r 1 --qos-reliability best_effort \
-  /copaint/px4_net_test \
-  px4_msgs/msg/VehicleStatus \
-  "{timestamp: 0, arming_state: 2, nav_state: 14, failsafe: false}"
-```
-
-###### Desktop → Raspberry Pi
-라즈베리 파이에서 먼저 수신 대기
-
-```bash
-source /opt/ros/humble/setup.bash
-source ~/CO_Paint/CO-Paint-uav-edge/copaint_ws/install/setup.bash
-
-ros2 topic echo /copaint/gcs_px4_test px4_msgs/msg/VehicleStatus --qos-reliability best_effort
-```
-
-데스크톱에서 송신
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-
-docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /px4_msgs_install/setup.bash; source /tmp/co_paint_install/setup.bash; ros2 topic pub -r 1 --qos-reliability best_effort /copaint/gcs_px4_test px4_msgs/msg/VehicleStatus \"{timestamp: 0, arming_state: 2, nav_state: 14, failsafe: false}\""
-```
-
-
-
-##### 실패 시
-메시지가 보이지 않을 때 확인 순서:
-
-```bash
-# 데스크톱/GCS
-cd ~/dev/projects/CO_Paint/ugv_system
-scripts/check_network.sh
-docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /px4_msgs_install/setup.bash; printenv | grep -E 'ROS_DOMAIN_ID|RMW_IMPLEMENTATION|CYCLONEDDS_URI|ROS_LOCALHOST_ONLY'"
-docker compose exec -T co_paint /bin/bash -lc "source /opt/ros/humble/setup.bash; source /px4_msgs_install/setup.bash; ros2 topic list"
-
-# 라즈베리 파이
-printenv | grep -E "ROS_DOMAIN_ID|RMW_IMPLEMENTATION|CYCLONEDDS_URI|ROS_LOCALHOST_ONLY"
-sed -n '1,45p' ~/CO_Paint/CO-Paint-uav-edge/cyclonedds.xml
-sudo ufw status
-```
-
-정상 기준:
-
-- `ROS_DOMAIN_ID=53`
-- `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
-- `ROS_LOCALHOST_ONLY=1`이 없어야 함
-- GCS `cyclonedds.xml`의 `NetworkInterfaceAddress`는 `192.168.53.5`
-- Raspberry Pi `cyclonedds.xml`의 `NetworkInterfaceAddress`는 `192.168.53.2`
-- Peers에는 `192.168.53.5`, `192.168.53.4`, `192.168.53.2` 포함
-- UFW를 켠 경우 양쪽 모두 `sudo ufw allow in proto udp from 192.168.53.0/24` 필요
-
-`The passed message type is invalid` 또는 `Unknown package 'px4_msgs'`가 나오면 해당 장비에서 `px4_msgs` setup 파일을 source하지 못한 상태
-
-`/copaint/net_test` 테스트 결과는 `telemetry_logs`가 아니라 `topic_communication_test_logs`에 저장
-
-`/copaint/px4_net_test`는 px4_msgs DDS 통신 확인용. DB 저장 대상 기본 토픽은 아님
-
-`telemetry_logs`는 PX4 위치/상태 토픽(`/fmu/out/vehicle_local_position`, `/fmu/out/vehicle_status_v1`) 기록용
-
-**DB에서 최근 통신 테스트 로그 확인**
-```bash
-docker compose exec -T postgres psql -U ugv -d ugv_db -c "SELECT topic_test_log_id, received_at, topic_name, message_data, source_name FROM topic_communication_test_logs ORDER BY topic_test_log_id DESC LIMIT 10;"
-```
-
-**API로 최근 통신 테스트 로그 확인**
-```bash
-curl http://localhost:8000/api/topic-test-logs?limit=10
-curl http://192.168.53.5/api/topic-test-logs?limit=10
-```
-
-**DBeaver에서 확인**
-이 데스크톱에서 DBeaver로 접속할 때는 아래 값으로 PostgreSQL 연결을 생성
+주요 토픽 흐름은 다음과 같습니다.
 
 ```text
-Host: localhost
-Port: 5432
-Database: ugv_db
-Username: ugv
-Password: ugv1234
+/camera/rgb/image_raw
+  -> /vision/segmentation
+  -> /vision/bboxes_2d
+  -> /vision/target_error
+  -> /painting/start_area
 ```
 
-1. DBeaver에서 `New Database Connection` 선택 후 `PostgreSQL` 선택
+### SLAM and Localization
 
-![DBeaver PostgreSQL 선택](images/README/DBeaver1.png)
+GCS와 Mini PC는 LiDAR 기반 SLAM 및 위치 추정 결과를 ROS 2 네트워크로 공유합니다. `localization_bringup`은 Fast-LIO localization 실행과 odometry bridge를 묶어주고, `odometry_bridge`는 SLAM odometry를 PX4에서 사용할 수 있는 형태로 변환하는 역할을 합니다.
 
-2. 접속 정보를 입력하고 `Test Connection`으로 연결 확인
+| SLAM Map | Fast-LIO / Localization |
+| --- | --- |
+| ![SLAM map](images/README/slam1.png) | ![Fast-LIO result](images/README/slam_fast-lio1.png) |
 
-![DBeaver PostgreSQL 접속 정보 입력](images/README/DBeaver2.png)
+![EKF2 visualization](images/README/EKF2_1.png)
 
-3. 연결 성공 후 `public -> Tables -> topic_communication_test_logs -> View Data`에서 저장 로그 확인
+### Auto Landing Support
 
-![DBeaver 테이블 데이터 확인](images/README/DBeaver3.png)
+`auto_landing_ctrl` 패키지는 UGV 상단 카메라로 드론 하단 ArUco 마커를 추적합니다. 자동 착륙 단계에서 마커 중심 오차를 계산하고 `/cmd_vel`을 통해 UGV를 드론 아래로 정렬하는 PID 제어를 수행합니다.
 
-테스트용 publisher를 `-r 1`로 실행하면 1초마다 DB에 한 줄씩 저장. 테스트 완료 후 publisher 터미널에서 `Ctrl+C`로 종료
+## Runtime Services
 
----
+`docker-compose.yml`은 GCS에서 필요한 주요 서비스를 하나의 런타임으로 묶습니다.
 
+| Service | 역할 |
+| --- | --- |
+| `co_paint` | ROS 2 메인 컨테이너, rosbridge, PX4 메시지 연동 |
+| `web_ui` | nginx 기반 GCS Web UI와 `/api/`, `/rosbridge/` 프록시 |
+| `server` | FastAPI API 서버와 DB 스키마 관리 |
+| `postgres` | 텔레메트리, 명령, 통신 테스트 로그 저장 |
 
+주요 접속점은 다음과 같습니다.
 
+| Endpoint | 설명 |
+| --- | --- |
+| `http://192.168.53.5` | 내부망에서 접속하는 GCS Web UI |
+| `http://localhost` | GCS PC 로컬 Web UI |
+| `ws://192.168.53.5/rosbridge/` | Web UI용 rosbridge WebSocket |
+| `192.168.53.5:5432` | PostgreSQL |
+| `192.168.53.5:8888/udp` | Micro XRCE-DDS Agent |
 
-## 새 PC 초기 세팅 절차
-아래 절차는 새 Ubuntu PC에 `ugv_system`을 처음 클론해서 GCS/Web UI 서버로 사용하는 경우를 기준으로 진행
-기준 네트워크는 위 `0. 기준 네트워크 및 접속 주소` 참고
+## ROS 2 Interfaces
 
+| Topic | Message | 용도 |
+| --- | --- | --- |
+| `/web_ui/flight_command` | `std_msgs/msg/String` | Web UI에서 발행하는 고수준 드론 명령 |
+| `/flight_control/mission_cmd` | `std_msgs/msg/String` | 검증 후 드론 제어 노드로 전달되는 미션 명령 |
+| `/web_ui/flight_command/status` | `std_msgs/msg/String` | Web UI 명령 relay 처리 결과 |
+| `/fmu/out/vehicle_local_position` | `px4_msgs/msg/VehicleLocalPosition` | PX4 위치 텔레메트리 |
+| `/fmu/out/vehicle_status_v1` | `px4_msgs/msg/VehicleStatus` | PX4 상태 텔레메트리 |
+| `/copaint/net_test` | `std_msgs/msg/String` | DDS 통신 및 DB 저장 테스트 |
+| `/vision/segmentation` | `sensor_msgs/msg/Image` | 외벽 이미지 세그멘테이션 결과 |
+| `/vision/segmentation_colored` | `sensor_msgs/msg/Image` | 컬러 세그멘테이션 시각화 |
+| `/vision/bboxes_2d` | `vision_msgs/msg/Detection2DArray` | 도색/비도색 영역 BBox |
+| `/vision/target_error` | `geometry_msgs/msg/Point` | 드론 정렬용 목표 오차 |
+| `/vision/exclusion_zones` | `std_msgs/msg/String` | 도색 금지 영역 정보 |
+| `/painting/start_area` | `std_msgs/msg/String` | 도색 시작 영역 JSON |
+| `/cmd_vel` | `geometry_msgs/msg/Twist` | UGV 이동 명령 |
+| `/landing_status` | `std_msgs/msg/String` | 자동 착륙 상태 |
 
-### 1. 기본 패키지 설치
-새 PC에서 터미널을 열고 실행
-it curl ca-certificates gnupg lsb-release iproute2 iputils-ping net-tools ufw 설치
+## Repository Layout
 
-```bash
-cd ~
-sudo apt update
-sudo apt install -y git curl ca-certificates gnupg lsb-release iproute2 iputils-ping net-tools ufw
+```text
+ugv_system/
+├── control_code/src/
+│   ├── auto_landing_ctrl/      # ArUco 기반 UGV 자동 착륙 보조
+│   ├── localization_bringup/   # Fast-LIO localization 및 odometry bridge 실행
+│   ├── painting_drone/         # 외벽 비전 세그멘테이션 파이프라인
+│   ├── px4_gui_ctrl/           # PX4 드론 제어, Web UI 명령 relay, 경로 계획
+│   └── px4_msgs/               # PX4 uORB 대응 ROS 2 메시지
+├── custom_msgs/                # CO-Paint 커스텀 ROS 2 인터페이스
+├── docker/
+│   ├── co_paint/               # ROS 2 / rosbridge 런타임
+│   ├── server/                 # FastAPI + telemetry logger
+│   ├── web_ui/                 # GCS Web UI
+│   └── postgres/               # DB 초기 스키마
+├── middleware/                 # CycloneDDS / DDS profile 설정
+├── odometry_bridge/            # SLAM odometry와 PX4 연동 bridge
+├── scripts/                    # 네트워크/서비스 점검 스크립트
+└── images/README/              # README용 아키텍처, SLAM, 비전 결과 이미지
 ```
 
+## Technology Stack
 
-Docker 설치
+- ROS 2 Humble
+- PX4 1.16, `px4_msgs`, Micro XRCE-DDS
+- CycloneDDS, rosbridge
+- Docker Compose, nginx
+- FastAPI, PostgreSQL
+- OpenCV, ArUco marker tracking
+- ResNet-50 기반 외벽 세그멘테이션
+- Fast-LIO 기반 LiDAR localization 연동
 
-```bash
-cd ~
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-```
+## Quick Runtime Check
 
-
-현재 사용자를 `docker` 그룹에 추가
-
-```bash
-cd ~
-sudo usermod -aG docker "$USER"
-newgrp docker
-docker --version
-docker compose version
-```
-`newgrp docker` 이후 Docker 권한 문제 발생 시 로그아웃 후 다시 로그인
-
-
-
-### 2. 코드 클론
-권장 경로: `~/dev/projects/CO_Paint/ugv_system`
-
-```bash
-cd ~
-mkdir -p ~/dev/projects/CO_Paint
-cd ~/dev/projects/CO_Paint
-git clone <UGV_SYSTEM_REPOSITORY_URL> ugv_system
-cd ~/dev/projects/CO_Paint/ugv_system
-```
-
-
-클론 후 파일 위치 확인
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-ls -la
-ls -la docker-compose.yml middleware/cyclonedds.xml scripts/check_network.sh
-```
-
-
-
-### 3. 환경 파일 준비
-`.env.example`을 복사해서 `.env` 생성
+이 README는 프로젝트 소개를 목적으로 하며, 상세 설치 절차보다는 시스템을 이해하는 데 필요한 최소 실행 흐름만 제공합니다.
 
 ```bash
 cd ~/dev/projects/CO_Paint/ugv_system
 cp .env.example .env
-nano .env
-```
-
-
-
-.env 확인
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-grep -E "GCS_IP|MINI_PC_IP|UAV_EDGE_IP|ROS_DOMAIN_ID|ROSBRIDGE_PORT|WEB_UI_PORT" .env
-```
-
-
-
-### 4. GCS 고정 IP 설정
-현재 네트워크 인터페이스 이름 확인
-
-```bash
-cd ~
-ip -br addr
-nmcli device status
-nmcli connection show
-```
-
-
-
-유선 인터페이스 연결 이름이 `Wired connection 1`이면 아래와 같이 설정
-
-```bash
-cd ~
-sudo nmcli connection modify "Wired connection 1" \
-  ipv4.addresses 192.168.53.5/24 \
-  ipv4.gateway 192.168.53.1 \
-  ipv4.dns "8.8.8.8 1.1.1.1" \
-  ipv4.method manual
-
-sudo nmcli connection down "Wired connection 1"
-sudo nmcli connection up "Wired connection 1"
-```
-
-
-설정 확인:
-
-```bash
-cd ~
-ip -br addr
-ip route
-ping -c 3 192.168.53.5
-ping -c 3 192.168.53.1
-```
-
-
-
-#### 4-1. 고정 IP 변경 시 수정해야 하는 곳
-GCS IP를 예를 들어 `192.168.53.5`으로 바꾸는 경우 아래 파일을 모두 수정
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-nano .env
-nano .env.example
-nano middleware/cyclonedds.xml
-nano docker/web_ui/nginx.conf
-nano README.md
-```
-
-`.env`:
-
-```env
-GCS_IP=192.168.53.5
-```
-
-`middleware/cyclonedds.xml`:
-
-```xml
-<NetworkInterfaceAddress>192.168.53.5</NetworkInterfaceAddress>
-<Peer address="192.168.53.5"/>  <!-- Desktop PC / GCS -->
-```
-
-`docker/web_ui/nginx.conf`:
-
-```nginx
-server_name 192.168.53.5 localhost _;
-```
-
-NetworkManager 고정 IP도 함께 변경
-
-```bash
-cd ~
-nmcli connection show
-sudo nmcli connection modify "Wired connection 1" \
-  ipv4.addresses 192.168.53.5/24 \
-  ipv4.gateway 192.168.53.1 \
-  ipv4.method manual
-sudo nmcli connection down "Wired connection 1"
-sudo nmcli connection up "Wired connection 1"
-ip -br addr
-```
-
-설정 변경 후 컨테이너를 다시 빌드/재시작
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
 docker compose up -d --build
 docker compose ps
 scripts/check_network.sh
 ```
 
+GCS Web UI는 GCS PC에서 `http://localhost`, 내부망 장치에서는 `http://192.168.53.5`로 확인합니다. WebSocket은 `ws://192.168.53.5/rosbridge/` 경로를 사용합니다.
 
+네트워크 기준값이 바뀌면 `.env`, `middleware/cyclonedds.xml`, `docker/web_ui/nginx.conf`의 GCS IP와 peer 주소를 함께 맞춰야 합니다.
 
-#### 4-2. 무선 네트워크와 유선 Lan 동시 사용
-각 네트워크 간 대역대를 다르게 하기
-```bash
-cd ~
+## Operational Notes
 
-# 현재 연결 확인
-nmcli connection show --active
-ip route
+- ROS 2 DDS 통신 기준 도메인은 `ROS_DOMAIN_ID=53`입니다.
+- GCS 기준 CycloneDDS interface 주소는 `192.168.53.5`입니다.
+- Mini PC와 UAV edge는 같은 `192.168.53.0/24` 내부망에 있어야 합니다.
+- ROS 2 DDS UDP, Web UI, rosbridge, FastAPI, PostgreSQL, Micro XRCE-DDS 포트가 방화벽에서 허용되어야 합니다.
+- `/copaint/net_test`는 DDS 통신과 DB 저장 경로를 함께 확인하기 위한 테스트 토픽입니다.
 
-# 유선 LAN은 UGV/드론 내부망 전용으로 설정
-sudo nmcli connection modify "Wired connection 1" \
-  ipv4.addresses 192.168.53.5/24 \
-  ipv4.method manual \
-  ipv4.never-default yes
+## Project Status
 
-# Wi-Fi는 인터넷 기본 경로로 사용
-sudo nmcli connection modify "<Wi-Fi 연결 이름>" \
-  ipv4.method auto \
-  ipv4.never-default no
-
-# 연결 재시작
-sudo nmcli connection down "Wired connection 1"
-sudo nmcli connection up "Wired connection 1"
-
-# 라우팅 확인
-ip route
-```
-
-
-
-### 5. CycloneDDS 설정 확인
-GCS PC는 `middleware/cyclonedds.xml`의 `NetworkInterfaceAddress`를 `192.168.53.5`로 유지
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-nano middleware/cyclonedds.xml
-```
-
-
-GCS 기준값:
-
-```xml
-<NetworkInterfaceAddress>192.168.53.5</NetworkInterfaceAddress>
-```
-
-Peers:
-
-```xml
-<Peer address="192.168.53.5"/>  <!-- Desktop PC / GCS -->
-<Peer address="192.168.53.4"/>  <!-- Mini PC / UGV SLAM -->
-<Peer address="192.168.53.2"/>  <!-- UAV edge / Raspberry Pi role -->
-```
-
-
-값 확인:
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-grep -n "NetworkInterfaceAddress\\|Peer address" middleware/cyclonedds.xml
-```
-
-
-
-### 6. CycloneDDS / ROS 2 DDS / 방화벽 설정
-Raspberry Pi로 `cyclonedds.xml` 복사, 장치별 IP 수정, `~/.bashrc` 설정, 방화벽 허용 순서로 실행
-
-```bash
-scp ~/dev/projects/CO_Paint/ugv_system/middleware/cyclonedds.xml samuel@192.168.53.2:/home/samuel/CO_Paint/CO-Paint-uav-edge/cyclonedds.xml
-
-cd ~/CO_Paint/CO-Paint-uav-edge
-ls -l cyclonedds.xml
-nano ~/CO_Paint/CO-Paint-uav-edge/cyclonedds.xml
-# scp 명령어 사용시 파일 전송받는 쪽 PC IP로 변경
-# Raspberry Pi에서는 <NetworkInterfaceAddress>를 192.168.53.2로 수정
-# Mini PC에서는 <NetworkInterfaceAddress>를 192.168.53.4로 수정
-
-# 설정 추가
-nano ~/.bashrc
-
-# ROS 2 Humble setup
-source /opt/ros/humble/setup.bash
-
-# CO-Paint ROS2 DDS settings
-export ROS_DOMAIN_ID=53
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export CYCLONEDDS_URI=file:///home/samuel/CO_Paint/CO-Paint-uav-edge/cyclonedds.xml
-
-# DDS 세팅 확인
-printenv | grep -E "ROS_DOMAIN_ID|RMW_IMPLEMENTATION|CYCLONEDDS_URI"
-
-# 방화벽 설정 - GCS PC에서 Web UI, rosbridge, API, PostgreSQL, DDS, Micro XRCE-DDS 포트 허용
-sudo ufw allow 22/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 8000/tcp
-sudo ufw allow 9090/tcp
-sudo ufw allow 5432/tcp
-sudo ufw allow 8888/udp
-
-# 방화벽 설정 - 모든 ROS 2 DDS PC
-sudo ufw allow in proto udp from 192.168.53.0/24
-sudo ufw reload
-sudo ufw status
-```
-
-
-`ufw`가 비활성화되어 있으면 활성화
-
-```bash
-cd ~
-sudo ufw enable
-sudo ufw status verbose
-```
-
-
-테스트 중 방화벽 영향인지 빠르게 확인해야 할 때만 임시로 off
-
-```bash
-cd ~
-sudo ufw disable
-sudo ufw status
-```
-
-
-운영 시 다시 on
-
-```bash
-cd ~
-sudo ufw enable
-```
-
-
-
-### 7. Docker 서비스 실행
-처음 실행 또는 설정 변경 후 아래 명령으로 빌드/실행
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-docker compose up -d --build
-```
-
-상태 확인:
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-docker compose ps
-```
-
-정상 예시는 `co_paint`, `server`, `web_ui`, `postgres`가 모두 `Up` 상태
-로그 확인:
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-docker compose logs --tail 80 co_paint
-docker compose logs --tail 80 server
-docker compose logs --tail 80 web_ui
-```
-
-rosbridge가 정상이라면 `co_paint` 로그에 아래와 비슷한 문구 출력
-
-
-```text
-Rosbridge WebSocket server started on port 9090
-```
-
-
-
-### 8. GCS 로컬 접속 확인
-GCS PC에서 직접 확인
-
-```bash
-cd ~
-curl http://localhost/
-curl http://192.168.53.5/
-curl "http://192.168.53.5/api/topic-test-logs?limit=1"
-```
-
-
-브라우저에서 확인:
-
-```text
-http://localhost
-http://192.168.53.5
-```
-
-
-WebSocket 프록시 확인:
-
-```bash
-cd ~
-curl --max-time 3 --include --no-buffer --http1.1 \
-  --header "Connection: Upgrade" \
-  --header "Upgrade: websocket" \
-  --header "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
-  --header "Sec-WebSocket-Version: 13" \
-  http://192.168.53.5/rosbridge/
-```
-
-
-정상이면 아래 응답이 포함
-
-```text
-HTTP/1.1 101 Switching Protocols
-```
-
-
-
-### 9. 외부 PC 접속 확인
-외부 PC가 같은 라우터의 `192.168.53.0/24` 대역인지 확인
-
-Windows 외부 PC에서 IP 확인:
-
-```powershell
-ipconfig
-```
-
-
-외부 PC의 IPv4가 `192.168.53.x`인지 확인
-
-Windows 외부 PC에서 GCS 연결 확인:
-
-```powershell
-ping 192.168.53.5
-Test-NetConnection 192.168.53.5 -Port 80
-Test-NetConnection 192.168.53.5 -Port 9090
-```
-
-
-외부 PC 브라우저 접속:
-
-```text
-http://192.168.53.5
-```
-
-`https://`가 아니라 반드시 `http://`로 접속. 페이지가 뜨는데 WebSocket만 `Connecting`이면 브라우저에서 `Ctrl+F5`로 강력 새로고침
-
-
-
-### 10. 전체 네트워크 테스트
-GCS PC에서 아래 스크립트를 실행
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-scripts/check_network.sh
-```
-
-이 스크립트가 확인하는 항목:
-
-```text
-192.168.53.5 GCS ping
-192.168.53.4 Mini PC ping
-192.168.53.2 Raspberry Pi ping
-192.168.53.5:80 Web UI TCP
-192.168.53.5:9090 rosbridge TCP
-http://192.168.53.5/ Web UI HTTP
-http://192.168.53.5/api/topic-test-logs?limit=1 API proxy
-ws://192.168.53.5/rosbridge/ WebSocket upgrade
-```
-
-Mini PC 또는 Raspberry Pi가 꺼져 있으면 해당 ping만 실패할 수 있음
-GCS Web UI/API/WebSocket 항목이 모두 OK면 웹 서버 쪽은 정상
-
-
-
-### 12. 자주 발생하는 문제
-`http://192.168.53.5` 접속이 안 되는 경우:
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-ip -br addr
-ss -ltnp | grep -E ":80|:9090|:8000"
-docker compose ps
-docker compose logs --tail 80 web_ui
-sudo ufw status verbose
-```
-
-WebSocket이 `Connecting`에서 멈추는 경우:
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-curl --max-time 3 --include --no-buffer --http1.1 \
-  --header "Connection: Upgrade" \
-  --header "Upgrade: websocket" \
-  --header "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
-  --header "Sec-WebSocket-Version: 13" \
-  http://192.168.53.5/rosbridge/
-
-docker compose logs --tail 80 co_paint
-```
-
-`co_paint` 로그에 `does not match an available interface`가 나오는 경우:
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-ip -br addr
-grep -n "NetworkInterfaceAddress" middleware/cyclonedds.xml
-```
-
-현재 PC의 실제 IP와 `NetworkInterfaceAddress`가 다르면 `middleware/cyclonedds.xml`을 수정하고 재시작
-
-```bash
-cd ~/dev/projects/CO_Paint/ugv_system
-nano middleware/cyclonedds.xml
-docker compose restart co_paint server web_ui
-docker compose logs --tail 80 co_paint
-```
-
-외부 PC에서 ping은 되는데 웹만 안 되는 경우:
-
-```bash
-cd ~
-sudo ufw allow 80/tcp
-sudo ufw reload
-sudo ufw status verbose
-```
+현재 시스템은 UGV, UAV edge, GCS를 내부망으로 연결해 드론 제어, 텔레메트리 로깅, SLAM/비전 파이프라인, 자동 착륙 보조 기능을 통합하는 개발 단계입니다. README는 레포지토리의 목적과 구조를 설명하는 소개 문서이며, 장비별 상세 세팅과 현장 운용 절차는 환경에 맞춰 별도 운영 문서로 관리하는 것을 권장합니다.
